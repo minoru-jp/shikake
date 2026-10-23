@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shikake"
+version = "0.0.1"
+authors = [{name = "minoru-jp"}]
+license = "MIT"
+license-files = ["LICENSE"]
+description = "Experimental AST-based Python source modeling library"
+keywords = [
+    "python-ast",
+    "static-analysis",
+    "source-modeling",
+    "transpilation",
+    "restricted-python",
+]
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = ["shikumi>=0.2.4,<2.0.0"]
+
+[project.urls]
+Homepage = "https://github.com/minoru-jp/shikake"
+Repository = "https://github.com/minoru-jp/shikake"
+Documentation = "https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/INDEX.md"
+
+[project.optional-dependencies]
+dev = [
+    "shikumi-devdoc==0.3.5",
+    "ruff==0.16.10",
+    "basedpyright==1.40.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"shikake._mica" = ["py.typed"]
+shikake = ["py.typed"]
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.format]
+exclude = ["*.md"]
+
+[tool.basedpyright]
+include = ["src", "tests"]
+extraPaths = ["src"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+

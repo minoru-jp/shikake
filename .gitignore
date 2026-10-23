@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.basedpyright/
+.pyright/
+.coverage
+htmlcov/
+coverage.xml
+build/
+dist/
+.DS_Store
+
+# Locally generated canonical Markdown; sources live under devdocs/canonical_sources.
+devdocs/canonical_documents/

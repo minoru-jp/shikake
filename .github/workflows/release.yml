@@ -1,0 +1,157 @@
+name: Release to PyPI
+
+# Publishing is deliberately independent from push and GitHub Release events.
+# Run this workflow manually from the default branch after CI is green.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Check release source and version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.metadata.outputs.tag }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Verify default branch and package version
+        id: metadata
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          expected_ref = f"refs/heads/{os.environ['DEFAULT_BRANCH']}"
+          if os.environ['GITHUB_REF'] != expected_ref:
+              raise SystemExit(f"Release must run from {expected_ref}, not {os.environ['GITHUB_REF']}")
+
+          project = tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']
+          version = project['version']
+          if project['name'] != 'shikake' or not re.fullmatch(r'\d+\.\d+\.\d+(?:[A-Za-z0-9.+-]+)?', version):
+              raise SystemExit('Unexpected distribution name or release version')
+          tag = f'v{version}'
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              print(f'tag={tag}', file=output)
+          print(f'Releasing shikake {version} from {os.environ["GITHUB_SHA"]} as {tag}')
+          PY
+      - name: Refuse to republish an already tagged version
+        env:
+          RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --tags origin "refs/tags/${RELEASE_TAG}" | grep -q .; then
+            echo "Tag ${RELEASE_TAG} already exists. Do not republish the same version." >&2
+            echo "If a previous release run failed after publishing, rerun only its failed jobs." >&2
+            exit 1
+          fi
+
+  checks:
+    needs: prepare
+    uses: ./.github/workflows/checks.yml
+
+  build:
+    name: Build distributions
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Build and check packages
+        run: |
+          python -m pip install build twine
+          python -m build
+          python -m twine check --strict dist/*
+      - name: Upload distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-distributions
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/shikake/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: release-distributions
+          path: dist/
+      - name: Publish with Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github_release:
+    name: Tag and create GitHub Release
+    needs: [prepare, build, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out published source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Download published distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: release-distributions
+          path: dist/
+      - name: Create or verify release tag
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin --tags
+          if git show-ref --verify --quiet "refs/tags/${RELEASE_TAG}"; then
+            tagged_commit=$(git rev-parse "${RELEASE_TAG}^{commit}")
+            if [[ "$tagged_commit" != "$GITHUB_SHA" ]]; then
+              echo "Tag ${RELEASE_TAG} points to ${tagged_commit}, not ${GITHUB_SHA}" >&2
+              exit 1
+            fi
+            echo "Tag ${RELEASE_TAG} already points to the published commit."
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag -a "$RELEASE_TAG" -m "Release ${RELEASE_TAG}"
+            git push origin "refs/tags/${RELEASE_TAG}"
+          fi
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "GitHub Release ${RELEASE_TAG} already exists."
+          else
+            gh release create "$RELEASE_TAG" dist/* --verify-tag \
+              --title "$RELEASE_TAG" --generate-notes
+          fi

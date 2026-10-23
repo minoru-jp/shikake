@@ -1,0 +1,18 @@
+# Keep the source distribution self-contained for tests and canonical source editing.
+include Makefile
+include README.md
+include CHANGELOG.md
+graft docs
+graft tests
+graft devdocs
+prune devdocs/canonical_documents
+
+# Exclude generated caches and temporary files from the source archive.
+prune .pytest_cache
+prune .ruff_cache
+prune .basedpyright
+prune .pyright
+prune build
+prune dist
+global-exclude *.py[cod]
+global-exclude .DS_Store CACHEDIR.TAG

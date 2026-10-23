@@ -11,7 +11,7 @@ from shikumi_devdoc.norms.document import title
     heading="title",
 )
 class STATUS:
-    """{{project.name}} `{{project.version}}` は初回Alphaリリースです。本書は実装済み機能、制限、および確認済みのテスト実績を記録します。リリース別の変更内容は日本語CHANGELOG正本と英語 `CHANGELOG.md` に記録します。"""
+    """{{project.name}} `{{project.version}}` は2026年10月24日付の公開バージョンとして記録します。本書は実装済み機能、制限、および確認済みのテスト実績を記録します。リリース別の変更内容は日本語CHANGELOG正本と英語 `CHANGELOG.md` に記録します。"""
 
     class AVAILABLE:
         """- 配布名・公開import名は `shikake` です。内部実装は `shikake._mica` に置き、トップレベルの `mica` は配布しません。実行時のShikumi依存は `>=0.2.4,<2.0.0` です。
@@ -22,6 +22,13 @@ class STATUS:
         - Python 3.12の `type` 文・ジェネリック宣言と、3.13の型パラメータ既定値、3.14のt-string（TemplateStr・Interpolation）をModel化できます。Python 3.14の括弧なしの複数例外指定は従来の例外処理と同じModelで扱います。 Python 3.15のPEP 798展開付き内包表記は構文としてModel化します。明示的lazy importは通常のimportと同じKind・Structureを用いて、文に `lazy` Featureを保持します。実行時の遅延ロード・初期化順序を評価せず、束縛3軸や静的参照候補の規則にも反映しません。内部のModel化処理は3.13までの基礎規則と3.14以降の差分規則に整理されています。検証実績は次節に記録します。CIはPython 3.11〜3.15を対象としています。現行の記述体には143 Kind、61 Structure、2 Featureがあります。具体的なKind・Structureの一覧は[LAYOUTS仕様正本ソース](../devdocs/canonical_sources/specification/layouts.py)を参照してください。"""
 
         title @= "実装済みの範囲"
+
+    class COMMENTS_V0_0_2:
+        """- v0.0.2で `collect_comments(source)` を追加し、tokenizeによるコメント原文を `SourceComments` として独立して保持します。行範囲、行末、直前コード行に遮られない上方、モジュール先頭/末尾の検索を提供します。
+        - CR・LF・CRLFはASTと一致する行番号で処理します。`SourceComments` は収集APIからのみ生成し、直接構築・dataclasses.replaceはサポートしません。空行は探索を遮りません。コメント中の型情報は解釈せず、既存の `type_comments=False` とModelの構成木・ハッシュ・束縛3軸は変更しません。列位置はUnicode文字オフセットで、ASTのUTF-8バイト位置と異なります。
+        - Model起点の専用照会は追加しません。既存の `Model.span` がある場合、その `line`・`end_line` を行検索に渡して組み合わせられます。`span=None` ではこの方法は使えません。ソースの同一性、同一行の複数Modelの区別、コメントの意味的な所属は検証しません。パッケージ横断検索も提供せず、ソースごとに `collect_comments` を呼びます。関数・クラス本体の最初の文の `span.line` で真上のコメント（その文より前に同じ行のコードがない場合に限る）、デコレータ付き定義の直前は各デコレータを含めた最小開始行から、代入文の `span.end_line` で終了行の行末コメントを照会できますが、対象構文への所属を保証しません。複数行の構文内は `in_lines` を使います。コメント用APIを既存の解析APIに暗黙に組み込まないため、tokenizeのエラーは明示的な `collect_comments` 呼び出しでのみ発生します。新規の実行時依存はありません（tokenizeは標準ライブラリ）。ファイル入力ではtokenize.openでエンコーディング/BOMを処理し、同じ文字列を解析に渡します。構文解析できない入力へのtokenize挙動はPythonのバージョン間で保証しません。"""
+
+        title @= "v0.0.2：独立コメントと行検索"
 
     class PERFORMANCE:
         """- `Model` の構造的ハッシュはインスタンス内に遅延キャッシュされます。親Modelを初回ハッシュしたときに計算した子孫Modelのハッシュも保存し、後続の照会で再走査を減らします。ハッシュ値の算出規則と構造的等価性、非再帰的な計算は維持しています。
@@ -42,6 +49,9 @@ class STATUS:
         - v0.0.1のSourceInspection表示修正後、Python 3.13.5の開発環境で566件実行、557件成功・9件スキップを確認しました。この追加修正の他Pythonバージョンでの再検証結果は記録していません。
         - v0.0.1のlazy Feature対応後、Python 3.13.5の開発環境で570件実行、560件成功・10件スキップを確認しました（ASTフラグを模擬した回帰テストを含む）。このPython 3.13.5環境ではPython 3.15の実構文による統合テストを実行しておらず、別のレビュー環境での結果を次項に記録します。
         - v0.0.1のlazy Feature対応後、Python 3.15.0b4のレビュー環境で570件すべて成功、スキップ0件との報告を受けています。Python 3.15の実際のlazy import構文によるテストも含まれます。この実行のログは本書では独立に確認していません。
+        - v0.0.2の独立コメント検索とModel.spanの行番号合成を確認後、Python 3.13.5の開発環境で582件実行、572件成功・10件スキップを確認しました。この582件は開発途中の記録です。
+        - v0.0.2の公開文書整備時、Python 3.13.5の開発環境で589件実行、579件成功・10件スキップを確認しました。
+        - v0.0.2の最終レビュー後、別のレビュー環境でPython 3.11〜3.15の5バージョンすべてについて全テスト成功との報告を受けています。コメント関連の19件も各バージョンで成功し、Ruff check・format、BasedPyrightはエラー0件でした。英語READMEのコメント利用例4件と英語APIリファレンスの3件も正常動作が報告されています。これらはレビュー環境の報告であり、本書では実行ログを独立に確認していません。最終レビュー時のバージョン別総件数・スキップ数の内訳は未取得です。
         - 上記の性能リファクタリング変更後のテストが対象のPython各バージョンでも成功したことは開発者が別環境で確認済みとの報告を受けています。これらの過去の実行の件数・スキップ数は未詳で、ログも本書では独立に確認していません。
         - 以前の548件のレビュー環境の報告についてはスキップ数の内訳が未取得ですが、最新のPython 3.15.0b4での570件の報告ではスキップ0件です。これらの報告はGitHub Actionsの実行結果とは区別します。CIマトリクスはPython 3.11〜3.15で、従来のPython 3.11〜3.13でも検証実績があります。"""
 
@@ -49,7 +59,7 @@ class STATUS:
 
     class RELEASE_AUTOMATION:
         """- 通常のpushとpull requestでは `.github/workflows/ci.yml` からテスト・静的検査を実行します。PyPIへの公開はpushでは起動せず、`.github/workflows/release.yml` の `workflow_dispatch` をリポジトリのデフォルトブランチで手動実行したときだけ開始します。
-        - 公開ワークフローはPython 3.11〜3.15の共通チェック、sdist検証、配布物のビルドとTwine検証を先に実行します。続いてGitHubの `pypi` EnvironmentとPyPI Trusted Publishingを使ってアップロードし、成功した場合に限り同じコミットへ `v<project.version>` タグを付けてGitHub Releaseを作成します。`0.0.1` のタグは `v0.0.1` です。
+        - 公開ワークフローはPython 3.11〜3.15の共通チェック、sdist検証、配布物のビルドとTwine検証を先に実行します。続いてGitHubの `pypi` EnvironmentとPyPI Trusted Publishingを使ってアップロードし、成功した場合に限り同じコミットへ `v<project.version>` タグを付けてGitHub Releaseを作成します。`0.0.1` のタグは `v0.0.1`、`0.0.2` のタグは `v0.0.2` です。
         - GitHub Releaseにはビルドした配布物も添付します。タグがすでに存在するバージョンで新たな公開を開始することは拒否します。公開後のタグやReleaseの作成に失敗した際は、**元のワークフロー実行で失敗したジョブだけ**を再実行し、成功済みのPyPI公開ジョブを再実行しません。アップロード成否が不明な場合はPyPIの実際の公開状態を先に確認します。
         - PyPI側にはGitHubの所有者・リポジトリ・ワークフローファイル `release.yml`・Environment `pypi` に一致するTrusted Publisher設定が必要です。ここでの記載はワークフローの設定であり、外部サービスでのリリース成功を示すものではありません。"""
 

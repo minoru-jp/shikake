@@ -1,6 +1,7 @@
 """Private Mica implementation of the shikake public API."""
 
 from .base_references import BaseReference
+from .comments import Comment, SourceComments, collect_comments
 from .external_structures import ExternalModelingError
 from .inspection import (
     InspectionIssue,
@@ -20,6 +21,7 @@ from .tree_display import format_model_tree
 __all__ = [
     "BaseReference",
     "BindingState",
+    "Comment",
     "ExternalModelingError",
     "Feature",
     "InspectionIssue",
@@ -31,10 +33,12 @@ __all__ = [
     "OverrideCandidate",
     "PackageInspection",
     "PackageModel",
+    "SourceComments",
     "SourceInspection",
     "SourceSpan",
     "Structure",
     "UnsupportedSyntaxError",
+    "collect_comments",
     "format_model_tree",
     "inspect_package",
     "inspect_source",

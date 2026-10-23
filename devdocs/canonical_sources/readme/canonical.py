@@ -139,6 +139,46 @@ class README:
 
             title @= "Strict解析とPartial解析"
 
+    # The fenced examples must keep their indentation in generated Markdown.
+    # fmt: off
+    class COMMENTS_V0_0_2:
+        r"""v0.0.2では、ASTの構造Modelとは独立したコメント位置情報を取得できます。
+
+```python
+import shikake
+
+source = "# 説明\nvalue = 1  # type: int\n"
+comments = shikake.collect_comments(source)
+model = shikake.parse_source(source).get_nodes("body")[0]
+if model.span is not None:
+    print(comments.above_line(model.span.line))
+    print(comments.on_right_of_line(model.span.line))
+    print(comments.in_lines(model.span.line, model.span.end_line))
+```
+
+関数やクラスの本体冒頭にあるコメントは、定義Model自身ではなく `definition.get("body").get_nodes("statements")[0]` で得た最初の文の開始行を `above_line()` に渡して検索できます。ただし、その文の開始位置より前に同じ行のコードがある場合（`def f(): return 1` 等）は「本体冒頭」のレシピとして使えません。ソース行は `io.StringIO(source, newline=None).readlines()` で取り出してUTF-8で符号化し、`span.column` より前が空白だけであることを確かめます。`str.splitlines()` はASTの行番号と異なり改ページやUnicode区切り文字でも分割するため使いません。デコレータ付き定義のさらに上のコメントは、定義と各デコレータの `span.line` の最小値を `above_line()` に渡します。デコレータの例は、それを含むソースと解析結果を独立して用意し、前の例の関数を流用しません。例えば次のように、定義の直前にあるコメントを取得できます。
+
+```python
+import shikake
+
+source = "# definition note\n\n@decorator\ndef decorated():\n    return 1\n"
+comments = shikake.collect_comments(source)
+function = shikake.parse_source(source).get_nodes("body")[0]
+if function.span is not None:
+    start = min(
+        [function.span.line, *(d.span.line for d in function.get_nodes("decorators") if d.span is not None)]
+    )
+    print(tuple(comment.text for comment in comments.above_line(start)))
+    # ('# definition note',)
+```
+
+代入文の行末コメントは、代入文Modelの `span.end_line` を `on_right_of_line()` に渡す方法が便利です。これらはあくまで行番号の組み合わせであり、コメントの所有関係を表しません。複数行の式内のコメントは `in_lines()` で確認できます。空行は遮断しませんが、間のコード行は上方検索を遮断します。
+
+コメント原文は `Comment` と `SourceComments` に保持し、行範囲・行末・空行を通過する上方探索・モジュール先頭/末尾を照会できます。Modelの `SourceSpan` が存在すれば行番号を直接渡せるため、専用のModel起点APIは追加しません。ソースの一致は利用側で確認し、同一行の別Modelやコメントの意味的な対応付けは区別・推測しません。`span=None` のModelにはこの方法を適用できません。CRのみの改行を含め、ASTと同じ行番号で検索できます。ファイルの読み込みには `tokenize.open(path)` を推奨します。`SourceComments` は `collect_comments()` から取得し、直接構築や `dataclasses.replace()` はサポートしません。構文解析できない入力でのコメント結果・例外はPythonバージョンをまたいで保証しません。型コメントの解析は行わず、`type_comments=False` を維持します。詳細は[APIリファレンス](docs/api_reference/INDEX.md)を参照してください。"""
+
+        title @= "コメントと行位置の照会（v0.0.2）"
+
+    # fmt: on
     class EXTERNAL:
         """{{project.name}} では、利用者がShikumi記述体または `shikake.external.ExternalDefinitionsBuilder` により独自のKind・Structureを定義し、解析に組み込むことができます。
 

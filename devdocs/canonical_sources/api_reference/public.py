@@ -763,3 +763,150 @@ class PUBLIC_API:
             ```
 
             不完全な解析ではname_bindingsは空になります。"""
+
+    class API_055:
+        "ソースのコメントをASTモデル化とは独立して抽出する。"
+
+        name @= "shikake.collect_comments"
+        kind @= OPERATION
+        related @= (PARSING.SPEC_030, PARSING.SPEC_032)
+        input @= "source: str"
+        output @= "SourceComments"
+        detail @= "型コメントを解釈せず全コメント原文を収集する。CR・LF・CRLFでASTと同じ行番号を用いる。保証対象は同一PythonでASTが構文解析可能なソースとし、不正ソースのコメント結果・例外種別はPython間で保証しない。ファイル入力はtokenize.open()でエンコーディングとBOMを処理する。tokenize由来の字句エラーは伝播し、既存のparse/inspect APIには影響しない。"
+
+        # The generator preserves docstring indentation; keep runnable fences.
+        # fmt: off
+        class EXAMPLE:
+            r"""行番号ベースのコメント検索を行います。
+
+```python
+import shikake
+
+source = "# note\nvalue = 1  # type: int\n"
+comments = shikake.collect_comments(source)
+model = shikake.parse_source(source).get_nodes("body")[0]
+if model.span is not None:
+    print(comments.above_line(model.span.line))
+    print(comments.on_right_of_line(model.span.line))
+    print(comments.in_lines(model.span.line, model.span.end_line))
+```
+
+関数・クラス直下のコメントや代入文の行末コメントも、同じ公開APIを組み合わせるだけで取得できます。
+
+```python
+import io
+import shikake
+
+source = (
+    "def f():\n    # function note\n    value = 1  # assignment note\n    return value\n"
+    "class C:\n    # class note\n    item = 2  # class assignment note\n"
+)
+comments = shikake.collect_comments(source)
+function, cls = shikake.parse_source(source).get_nodes("body")
+for definition in (function, cls):
+    first = definition.get("body").get_nodes("statements")[0]
+    if first.span is not None:
+        # ASTの列はUTF-8バイト単位です。
+        lines = io.StringIO(source, newline=None).readlines()
+        prefix = lines[first.span.line - 1].encode("utf-8")[: first.span.column]
+        if not prefix.strip():
+            print(comments.above_line(first.span.line))
+        print(comments.on_right_of_line(first.span.end_line))
+```
+
+本体冒頭コメントのレシピは、その文が行の先頭（インデント以外のコードが前にない位置）から始まる場合に限ります。開始列の前をソースのUTF-8バイト列で調べ、空白のみか確認します。行の分割には `io.StringIO(source, newline=None).readlines()` を使い、ASTでは改行にならない改ページやUnicode区切り文字も分割する `str.splitlines()` は使いません。`def f(): return 1` のようにヘッダーと本体が同じ行なら使用しません。デコレータ付き関数・クラスの直前を調べる場合、デコレータ付きソースを独立に解析し、定義Modelの開始行と `get_nodes("decorators")` の各開始行の最小行を `above_line()` に渡します。
+
+```python
+import shikake
+
+source = "# definition note\n\n@decorator\ndef decorated():\n    return 1\n"
+comments = shikake.collect_comments(source)
+function = shikake.parse_source(source).get_nodes("body")[0]
+if function.span is not None:
+    lines = [function.span.line]
+    lines.extend(d.span.line for d in function.get_nodes("decorators") if d.span is not None)
+    print(tuple(comment.text for comment in comments.above_line(min(lines))))
+    # ('# definition note',)
+```
+
+ファイルのエンコーディング宣言やBOMは `tokenize.open(path)` で処理し、Model解析とコメント収集へ同じUnicode文字列を渡します。最初の本体文の開始行への上方検索は、間にコード行が存在すればそこで停止します。代入文の終了行への検索は行単位であり、同一行の別の文とも区別しません。複数行にまたがる構文内部のコメントは `in_lines()` を使います。Model.spanの行番号を既存の行検索に渡すだけでよく、Modelからコメントへの専用照会は不要です。ルートModelなどspan=Noneの場合には照会できません。同じ行の別のModelでも行検索結果は同じです。必ず同一ソースを使用し、コメントの意味的な所属は推測しません。"""
+
+        # fmt: on
+
+    class API_056:
+        "原文コメント1件を表す不変の位置情報。"
+
+        name @= "shikake.Comment"
+        kind @= TYPE
+        related @= (PARSING.SPEC_030, PARSING.SPEC_032)
+        output @= "Comment"
+        detail @= "textは#を含む原文。lineは1始まり、column/end_columnは0始まりUnicode文字位置。AST/SourceSpanのUTF-8バイト列とは異なる。"
+
+    class API_057:
+        "ソースのコメントと行位置索引を保持する不変の結果型。"
+
+        name @= "shikake.SourceComments"
+        kind @= TYPE
+        related @= (PARSING.SPEC_030, PARSING.SPEC_031)
+        output @= "SourceComments"
+        detail @= "collect_comments()が生成。内部のコメント行索引とコード行索引の一貫性を維持するため、直接構築やdataclasses.replace()はサポートしない。copy/pickleによる複製は可能。構造Modelへの追加・意味的な所有関係の推測は行わない。reprは件数のみ表示。"
+
+    class API_058:
+        "指定された両端を含む行範囲内のコメントを列挙する。"
+
+        name @= "shikake.SourceComments.in_lines"
+        kind @= OPERATION
+        related @= (PARSING.SPEC_031,)
+        input @= "first: int"
+        input @= "last: int"
+        output @= "tuple[Comment, ...]"
+        detail @= "1始まりの行の閉区間。コメントをソース順に返す。Model.spanがあればline/end_lineをそのまま指定できるが、モデルへの所属は保証しない。"
+
+    class API_059:
+        "行末コメントをコードとの位置関係から取得する。"
+
+        name @= "shikake.SourceComments.on_right_of_line"
+        kind @= OPERATION
+        related @= (PARSING.SPEC_031,)
+        input @= "line: int"
+        output @= "tuple[Comment, ...]"
+        detail @= "コメントより前にコードのある同一行のみ。対応するModelは必要ない。代入文Modelのspan.end_lineを指定すれば終了行の行末コメントを照会できる。開始行のModel.span.lineも指定できるが、同じ行にある別Modelとの区別やコメントの所有関係の判定はしない。"
+
+    class API_060:
+        "コード行に遮られない上方コメントを取得する。"
+
+        name @= "shikake.SourceComments.above_line"
+        kind @= OPERATION
+        related @= (PARSING.SPEC_031,)
+        input @= "line: int"
+        output @= "tuple[Comment, ...]"
+        detail @= "照会行は含めない。直近のコード行で探索を止め、空行は通過する。関数・クラス本体の最初の文のspan.lineを指定すると、その文の上にあるコメントを検索できる。定義Modelの開始行を使って本体内のコメントが得られるわけではない。本体先頭の利用例は、その行の文より前に空白以外のコードがない場合のみ適用する。同じ行に関数ヘッダーがある場合は該当しない。デコレータ付き定義の上を検索する場合は各デコレータ開始行も考慮して最も早い行から照会する。意味やモデルへの所属は判断しない。"
+
+    class API_061:
+        "最初のコード行より前のコメント群を取得する。"
+
+        name @= "shikake.SourceComments.module_header"
+        kind @= OPERATION
+        related @= (PARSING.SPEC_031,)
+        output @= "tuple[Comment, ...]"
+        detail @= "コードのないファイルでは全コメントを返す。"
+
+    class API_062:
+        "最後のコード行より後のコメント群を取得する。"
+
+        name @= "shikake.SourceComments.module_footer"
+        kind @= OPERATION
+        related @= (PARSING.SPEC_031,)
+        output @= "tuple[Comment, ...]"
+        detail @= "コードのないファイルでは全コメントを返す。"
+
+    class API_063:
+        "ソース順のコメント全件を取得する。"
+
+        name @= "shikake.SourceComments.comments"
+        kind @= VALUE
+        related @= (PARSING.SPEC_030, PARSING.SPEC_031)
+        output @= "tuple[Comment, ...]"
+        detail @= (
+            "元の # コメントをすべて保持した不変タプル。型コメントも特別扱いしない。"
+        )

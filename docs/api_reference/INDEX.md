@@ -62,6 +62,15 @@ Usage topics: [Relationship analysis selection](public.md#relationship-analysis-
 - [API_052: `shikake.utf8_byte_column_to_character_column`](public.md#api_052-shikakeutf8_byte_column_to_character_column)
 - [API_053: `shikake.format_model_tree`](public.md#api_053-shikakeformat_model_tree)
 - [API_054: `shikake.SourceInspection.name_bindings`](public.md#api_054-shikakesourceinspectionname_bindings)
+- [API_055: `shikake.collect_comments`](public.md#api_055-shikakecollect_comments)
+- [API_056: `shikake.Comment`](public.md#api_056-shikakecomment)
+- [API_057: `shikake.SourceComments`](public.md#api_057-shikakesourcecomments)
+- [API_058: `shikake.SourceComments.in_lines`](public.md#api_058-shikakesourcecommentsin_lines)
+- [API_059: `shikake.SourceComments.on_right_of_line`](public.md#api_059-shikakesourcecommentson_right_of_line)
+- [API_060: `shikake.SourceComments.above_line`](public.md#api_060-shikakesourcecommentsabove_line)
+- [API_061: `shikake.SourceComments.module_header`](public.md#api_061-shikakesourcecommentsmodule_header)
+- [API_062: `shikake.SourceComments.module_footer`](public.md#api_062-shikakesourcecommentsmodule_footer)
+- [API_063: `shikake.SourceComments.comments`](public.md#api_063-shikakesourcecommentscomments)
 
 ## External Definitions API
 

@@ -13,10 +13,29 @@ from shikumi_devdoc.norms.document import title
 class CHANGELOG:
     """本書は利用者に影響する変更を**リリース単位**で記録します。設計経緯と採否理由は
     `devdocs/canonical_sources/development_history/pre_release.py` および
-    `devdocs/canonical_sources/development_history/performance.py` に記録します。
+    `devdocs/canonical_sources/development_history/performance.py` と
+    `devdocs/canonical_sources/development_history/comments.py` に記録します。
 
-    `0.0.1` は2026年10月23日付の初回Alphaリリースとして記録します。
+    `0.0.1` は2026年10月23日付の初回Alphaリリース、`0.0.2` は2026年10月24日付のリリースとして記録します。
     変更項目は公開APIと利用者向け機能の範囲を示します。"""
+
+    class VERSION_0_0_2:
+        """0.0.2の公開内容。コメント情報と行番号による照会を追加しました。"""
+
+        title @= "0.0.2（2026-10-24）"
+
+        class ADDED:
+            """- **独立コメント情報**：`collect_comments(source)` がtokenizeから `Comment` と `SourceComments` を生成し、行範囲・行末・コードを挟まない上方・モジュール先頭/末尾の検索を提供します。空行やコメント内容から意味上の対応付けを推測しません。
+            - **型コメントの原文**：`# type: ...` や `# type: ignore` も通常コメントとして収集します。型コメントのAST解析や型推論を導入せず、`type_comments=False` を維持します。
+            - **Model位置との組み合わせ**：`Model.span` が保持する開始・終了行を既存の行検索に指定できます。関数・クラスの本体内コメントは最初の文の開始行、代入文の行末コメントは文の終了行から照会できます。専用のModel起点検索は追加せず、コメントとの意味的な関連付けも行いません。パッケージ横断検索とコメントの構造Model化は提供しません。"""
+
+            title @= "追加した機能"
+
+        class FIXED:
+            """- **改行の統一**：CR・LF・CRLFでコメントの行番号とASTの行番号を揃えました。
+            - **コメント結果の生成契約**：SourceCommentsの直接構築・dataclasses.replaceを非サポートとし、内部索引の一貫性を保証します。デコレータ・同一行本体・BOM入力・不正ソースに関する検索例と制約を明記しました。"""
+
+            title @= "修正"
 
     class VERSION_0_0_1:
         """PythonのASTを基礎とする静的な構造Model化ライブラリの初回リリースです。

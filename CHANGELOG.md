@@ -1,6 +1,20 @@
 # shikake changelog
 
-This changelog summarizes user-facing changes by release. Design decisions and development history remain in Japanese canonical sources: [pre-release history](devdocs/canonical_sources/development_history/pre_release.py) and [performance refactoring history](devdocs/canonical_sources/development_history/performance.py).
+This changelog summarizes user-facing changes by release. Design decisions and development history remain in Japanese canonical sources: [pre-release history](devdocs/canonical_sources/development_history/pre_release.py), [performance refactoring history](devdocs/canonical_sources/development_history/performance.py), and [comment-position history](devdocs/canonical_sources/development_history/comments.py).
+
+## 0.0.2 - 2026-10-24
+
+### Added
+
+- **Independent comment facts:** `collect_comments(source)` uses `tokenize` to return immutable `Comment` records in a `SourceComments` result, without adding comments to structural Models.
+- **Line queries:** `in_lines(first, last)`, `on_right_of_line(line)`, `above_line(line)`, `module_header()`, and `module_footer()` locate comments by written position. Empty lines do not block upward searches, but code-containing lines do.
+- **Type comments remain uninterpreted:** `# type: ...` and `# type: ignore` are collected as raw comments. Existing AST parsing continues with `type_comments=False`.
+- **Composition with Model locations:** Callers can pass the existing `Model.span` start/end line numbers to the line-query APIs. The first body statement's start line supports querying comments beneath a function/class header; an assignment statement's end line supports querying a trailing comment. No dedicated Model-to-comment lookup or semantic association is introduced. Package-wide comment collection is not provided.
+
+### Fixed
+
+- Normalize CR, LF, and CRLF for comment line positions consistent with AST parsing.
+- Keep `SourceComments` internal indexes consistent by restricting construction to `collect_comments()`; document decorator, same-line body, malformed input, and BOM edge cases.
 
 ## 0.0.1 - 2026-10-23
 

@@ -29,6 +29,7 @@ class ReadmeCanonicalTests(unittest.TestCase):
                 "CONCEPTS",
                 "INSTALL",
                 "QUICK_START",
+                "COMMENTS_V0_0_2",
                 "EXTERNAL",
                 "APPLICATIONS",
                 "LIMITATIONS",

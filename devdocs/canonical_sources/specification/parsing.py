@@ -203,3 +203,21 @@ class PARSING:
         title @= "Partial解析結果の省略表示と診断の保持"
         level @= MUST
         related @= (MODEL.SPEC_022,)
+
+    class SPEC_030:
+        """`collect_comments(source: str)` は、ASTと独立して `tokenize` により原文のコメントトークンを収集し、`SourceComments` を返す。`Comment` は `#` を含む原文、1始まりの行、0始まりのUnicode文字列位置（開始列・終了列）を持つ不変の付帯情報で、Model構成木の要素・Feature・型推論結果ではない。型コメントと `# type: ignore` も解釈せず原文のまま収集する。CR・LF・CRLFの改行は統一して行番号を数え、ASTの行番号と一致させる。`SourceComments` は `collect_comments()` のみから生成し、直接構築や `dataclasses.replace()` をサポートしない。コメント行索引は同じ字句解析結果から構築し、不整合な内部索引を外部から渡せないようにする。従来の `ast.parse(..., type_comments=False)` と `PARSING.SPEC_014` のModel化非採用を変更しない。"""
+
+        title @= "ASTから独立したコメント原文の収集"
+        level @= MUST
+
+    class SPEC_031:
+        """`SourceComments.comments` はコメントをソース順のタプルで返す。`in_lines(first, last)` は1始まりの閉区間にあるコメントをソース順で返す。`on_right_of_line(line)` は同じ行にコメント以前のコードトークンがある場合だけ当該行のコメントを返す。`above_line(line)` は指定行を含めず上方のコードを含む直近の行まで探索し、間のコメントをソース順で返す。空行とコメントのみの行は遮断しない。`module_header()` は最初のコード行より前、`module_footer()` は最後のコード行より後のコメントを返す。コードが存在しないソースでは両方とも全コメントを返す。位置や改行数から意味上の所属関係を推測しない。行番号は整数かつ1以上とし、不正型はTypeError、不正範囲はValueErrorとする。"""
+
+        title @= "意味的な関連付けを行わない行検索"
+        level @= MUST
+
+    class SPEC_032:
+        """`collect_comments()` は独立のUnicodeソース文字列を入力とし、結果の保証対象は利用中のPythonのASTで構文解析できるソースに限定する。AST解析を内部で実行することはなく、不正なソースでのtokenizeの結果・例外種別はPythonのバージョン間で保証しない。ファイルから文字列を読む際は `tokenize.open(path)` を利用し、エンコーディング宣言やUTF-8 BOMを処理してから、同じ文字列をModel解析とコメント抽出へ渡せる。tokenizeに伴う字句エラー（`TokenError`、`IndentationError`等）を利用側へ伝播する。Strict/PartialのAST解析APIを内部で呼ばず、既存解析の成否や診断結果を変更しない。コメントの列はtokenizeのUnicode文字オフセットで、AST/SourceSpanのUTF-8バイトオフセットとは異なる。文字列リテラル内部の`#`はコメントではなく、複数行トークンが占める行はコードのある行として扱う。既存の `Model.span` の行番号を `above_line`・`on_right_of_line`・`in_lines` に渡すことはできるが、Modelを受け取る専用検索やASTとの位置対応索引は提供しない。span=None のModelには利用できず、同じ行の複数Modelからは同一の行検索結果になる。ソースとModelの出自の一致およびコメントの所属は検証・推定しない。関数・クラスの本体先頭にあるコメントを調べる際は、定義Modelの開始行ではなく、bodyの最初の文のspan.lineを上方検索に指定できる。ただしその文の開始列より前が同じ行のコードではなく空白のみの場合に限り、本体先頭のコメントを探す利用例として適用する。ヘッダーと本体が同じ行の場合は適用しない。デコレータ付き定義の直前を調べるときは、定義の開始行と各デコレータの開始行の最小値から上方検索する。代入文の行末コメントを調べる際は、代入文のspan.end_lineを行末検索に指定できる。いずれも単なる行位置照会であり、内部のコメントを含む複数行構文にはin_linesを利用する。"""
+
+        title @= "コメント字句解析のエラー・座標系と境界"
+        level @= MUST

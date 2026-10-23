@@ -606,3 +606,117 @@ if inspection.complete:
     for binding in inspection.name_bindings:
         print(binding.name, binding.state.may_rebind)
 ```
+
+## API_055: `shikake.collect_comments`
+
+**Operation.** Extract comment tokens from a Unicode source string, without parsing or modeling type comments.
+
+- **Input:** `source: str`
+- **Result:** `SourceComments`
+- **Specifications:** [PARSING.SPEC_030](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_032](../../devdocs/canonical_sources/specification/parsing.py)
+- Lexically malformed input may raise `tokenize.TokenError` or `IndentationError`. The collected result is guaranteed only for input parseable by the AST parser of the current Python version; invalid inputs have no cross-version guarantee for errors or extracted comments. CR, LF, and CRLF are normalized to AST-compatible line numbering. For a file with an encoding cookie or BOM, use `tokenize.open(path)` to read text, and pass the same decoded text to both APIs. This does not change `parse_source()` or `inspect_source()` behavior.
+
+```python
+import tokenize
+import shikake
+
+with tokenize.open("example.py") as file:
+    source = file.read()
+comments = shikake.collect_comments(source)
+model = shikake.parse_source(source)
+```
+
+```python
+import shikake
+
+source = "# note\nvalue = 1  # type: int\n"
+comments = shikake.collect_comments(source)
+model = shikake.parse_source(source).get_nodes("body")[0]
+if model.span is not None:
+    print(comments.above_line(model.span.line))
+    print(comments.on_right_of_line(model.span.line))
+    print(comments.in_lines(model.span.line, model.span.end_line))
+```
+
+### Composing line queries with definitions and assignments
+
+A function or class definition contains a `body` block. Querying the first statement's start line can retrieve comments between the header and that statement **only when the same line has no code before that first statement**. For a one-line body, do not use this recipe. When testing this condition, use `io.StringIO(source, newline=None).readlines()`, not `str.splitlines()`: the latter splits at additional Unicode separators and form feeds that are not AST line breaks. A statement's **end line** can be used for trailing comments, including assignment statements:
+
+```python
+import io
+import shikake
+
+source = (
+    "def f():\n    # function note\n    value = 1  # assignment note\n    return value\n"
+    "class C:\n    # class note\n    item = 2  # class assignment note\n"
+)
+comments = shikake.collect_comments(source)
+function, cls = shikake.parse_source(source).get_nodes("body")
+for definition in (function, cls):
+    first = definition.get("body").get_nodes("statements")[0]
+    if first.span is not None:
+        # SourceSpan columns are UTF-8 byte offsets.
+        lines = io.StringIO(source, newline=None).readlines()
+        prefix = lines[first.span.line - 1].encode("utf-8")[: first.span.column]
+        if not prefix.strip():
+            print(comments.above_line(first.span.line))
+        print(comments.on_right_of_line(first.span.end_line))
+```
+
+For decorators before a function or class, query above the earliest decorator row (rather than `def`/`class`):
+
+```python
+import shikake
+
+source = "# definition note\n\n@decorator\ndef decorated():\n    return 1\n"
+comments = shikake.collect_comments(source)
+function = shikake.parse_source(source).get_nodes("body")[0]
+if function.span is not None:
+    lines = [function.span.line]
+    lines.extend(d.span.line for d in function.get_nodes("decorators") if d.span is not None)
+    print(tuple(comment.text for comment in comments.above_line(min(lines))))
+    # ('# definition note',)
+```
+
+The same approach applies to other statements with a `SourceSpan`. Use `in_lines()` to examine comments within multiline constructs. An intervening code-containing line blocks `above_line()`; empty lines do not. These calls return comments **at the queried lines**, not comments belonging to a particular definition, variable, or assignment. Multiple statements on one line are not distinguished, and `span=None` cannot supply a line. The caller must provide the source matching the Model.
+
+## API_056: `shikake.Comment`
+
+**Type.** Frozen source comment with `text`, `line`, `column`, and `end_column` attributes.
+
+- `text` includes the leading `#`; `line` is one-based. The columns are zero-based **Unicode character indices**, *not* AST/`SourceSpan` UTF-8 byte offsets. For line-based queries, `Model.span.line` and `end_line` need no column conversion.
+- **Specifications:** [PARSING.SPEC_030](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_032](../../devdocs/canonical_sources/specification/parsing.py)
+
+## API_057: `shikake.SourceComments`
+
+**Type.** Frozen token-derived comment collection, separate from the Model tree. Its `repr` summarizes the comment count without expanding all entries. Only `collect_comments()` constructs this result; direct construction and `dataclasses.replace()` are unsupported because its private indexes must remain consistent. Copy and pickle round-trips are supported.
+
+- **Specifications:** [PARSING.SPEC_030](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_031](../../devdocs/canonical_sources/specification/parsing.py)
+
+## API_058: `shikake.SourceComments.in_lines`
+
+**Operation.** `in_lines(first: int, last: int) -> tuple[Comment, ...]` returns comments in the inclusive one-based line interval, in source order. An available `Model.span` supplies `line` and `end_line` directly; this does not establish ownership.
+
+## API_059: `shikake.SourceComments.on_right_of_line`
+
+**Operation.** `on_right_of_line(line: int) -> tuple[Comment, ...]` returns the comment on that line only when code precedes it. No representative Model is required, even for punctuation-only lines. Using an assignment statement's `Model.span.end_line` queries its last line, but does not imply the comment belongs to that assignment. `Model.span.line` can also be used.
+
+## API_060: `shikake.SourceComments.above_line`
+
+**Operation.** `above_line(line: int) -> tuple[Comment, ...]` returns comments between the queried line (excluded) and the nearest preceding code-containing line (excluded). Blank lines never block the search. For function and class bodies, the first body statement's `Model.span.line` can be used to search above that statement, but only if its source line has no code before the statement. This does not apply when the header and body share a line. For decorated definitions, use the earliest decorator start line to search above the definition; its own `def`/`class` line will be blocked by decorator code. No ownership or semantic relevance is inferred.
+
+## API_061: `shikake.SourceComments.module_header`
+
+**Operation.** `module_header() -> tuple[Comment, ...]` returns comments before the first code-containing line.
+
+## API_062: `shikake.SourceComments.module_footer`
+
+**Operation.** `module_footer() -> tuple[Comment, ...]` returns comments after the last code-containing line.
+
+A file containing comments but no code returns all of its comments for **both** header and footer queries. On lines containing code, trailing comments are obtained through `on_right_of_line` rather than header/footer.
+
+## API_063: `shikake.SourceComments.comments`
+
+**Value.** A `tuple[Comment, ...]` containing all comments in source order. Type-comment text is included without interpretation. A `SourceComments` object is the result of the explicit `collect_comments()` call. There is no separate Model-origin or package-wide comment query. Instead, callers use `Model.span` line numbers with the existing queries and collect comments separately for each source. A module root or other Model can have `span=None`; Models sharing a line give the same line-query results. The library neither checks that the Model and comments came from the same source nor infers comment ownership.
+
+**Input validation:** Line numbers must be non-boolean integers >= 1. Invalid types raise `TypeError`; non-positive lines or reversed ranges raise `ValueError`. `collect_comments()` requires a Unicode `str`, not bytes. The comment query API does not change the behavior of any existing AST-based modeling entry point.

@@ -89,6 +89,69 @@ For package analysis, pass an `include(path, is_directory)` callback to `parse_p
 
 Each parsing/inspection API supports `import_policy="unrestricted"` (default), `"registered_interfaces"` (only explicitly imported registered interfaces), and `"registered_modules"` (registered external modules plus caller-specified `allowed_modules=("math", "custom_tools")`). `registered_modules` also permits every explicit registered-interface import. Both restricted modes admit the single directive `from __future__ import annotations`. Relative imports, including within the analyzed package, remain forbidden: change them to absolute imports and explicitly allow the written module names as needed. `allowed_modules` names must be NFKC-normalized. These checks compare written absolute module names without importing them and do not provide a security sandbox. See the [API Reference](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/public.md#caller-selected-import-restrictions-import_policy-allowed_modules).
 
+## Source comments (v0.0.2)
+
+The explicit `collect_comments(source)` API returns `SourceComments` with immutable `Comment` records, independently of the AST Model tree:
+
+```python
+import shikake
+
+source = "# note\nvalue = 1  # type: int\n"
+comments = shikake.collect_comments(source)
+model = shikake.parse_source(source).get_nodes("body")[0]
+if model.span is not None:
+    print(comments.above_line(model.span.line))
+    print(comments.on_right_of_line(model.span.line))
+    print(comments.in_lines(model.span.line, model.span.end_line))
+```
+
+For a function or class, the first statement of its `body` block supplies a line for querying comments immediately above that statement **only if no code appears before the statement on that same line**. For a one-line body such as `def f(): return 1`, this recipe does not apply. For an assignment statement, `span.end_line` supplies a line for querying its trailing comment. For example:
+
+```python
+import shikake
+
+source = "def f():\n    # body note\n    value = 1  # value note\n    return value\n"
+comments = shikake.collect_comments(source)
+function = shikake.parse_source(source).get_nodes("body")[0]
+first = function.get("body").get_nodes("statements")[0]
+if first.span is not None:
+    print(comments.above_line(first.span.line))
+    print(comments.on_right_of_line(first.span.end_line))
+```
+
+The same `body` lookup works for class definitions. To verify the same-line precondition, use the same universal-newline behavior as comment collection (CR, LF, CRLF); **do not use `str.splitlines()`**, which also splits on form feeds and other characters not considered line breaks by the AST:
+
+```python
+import io
+
+lines = io.StringIO(source, newline=None).readlines()
+prefix = lines[first.span.line - 1].encode("utf-8")[: first.span.column]
+if not prefix.strip():
+    print(comments.above_line(first.span.line))
+```
+
+AST columns use UTF-8 byte offsets, so the prefix is measured in encoded bytes.
+
+For a decorated function or class, search above its **earliest decorator** rather than its `def`/`class` line:
+
+```python
+import shikake
+
+source = "# definition note\n\n@decorator\ndef decorated():\n    return 1\n"
+comments = shikake.collect_comments(source)
+function = shikake.parse_source(source).get_nodes("body")[0]
+if function.span is not None:
+    start = min(
+        [function.span.line, *(d.span.line for d in function.get_nodes("decorators") if d.span is not None)]
+    )
+    print(tuple(comment.text for comment in comments.above_line(start)))
+    # ('# definition note',)
+```
+
+Here `function.span` must be present. These are **line-position queries**, not attachments of comments to declarations or assignments. For comments within multiline constructs, use `in_lines(first, last)`.
+
+It also supports `in_lines(first, last)`, `module_header()`, and `module_footer()`. Blank lines do not interrupt upward search; code lines do. CR, LF, and CRLF all use AST-compatible line numbers. For files with encoding declarations or a UTF-8 BOM, read with `tokenize.open(path)` and pass the **same decoded text** to both `collect_comments()` and `parse_source()`. A `SourceComments` result must be obtained from `collect_comments()`; direct construction and `dataclasses.replace()` are unsupported. Results for syntactically invalid Python input are not guaranteed across Python versions. Comments are not assigned to particular Models and type comments are not interpreted. Python AST parsing continues with `type_comments=False`. There is no separate Model-based comment lookup: callers can supply the line numbers from an available `Model.span` to the existing line queries. The module root and other Models may have `span=None`. A line query does not establish ownership, distinguish Models sharing a line, or verify that a Model and comments came from the same source. See the [API Reference](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/INDEX.md) for details.
+
 ## External structures
 
 Consumers can define custom Kinds and Structures with trusted Shikumi declarations or `shikake.external.ExternalDefinitionsBuilder` and provide them to the parser. For example, a transpiler may map a Python-facing memory or I/O interface to special operations in its target language.

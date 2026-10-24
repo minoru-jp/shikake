@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shikake"
-version = "0.0.2"
+version = "0.0.3"
 authors = [{name = "minoru-jp"}]
 license = "MIT"
 license-files = ["LICENSE"]

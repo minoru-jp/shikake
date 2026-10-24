@@ -98,6 +98,29 @@ On Python 3.14+, `t"Hello {name!r}"` produces a `model.value.template_string` Mo
 
 See [EXPRESSIONS.SPEC_030](../../devdocs/canonical_sources/specification/expressions.py) and [LAYOUTS.SPEC_061](../../devdocs/canonical_sources/specification/layouts.py) for the Japanese canonical contracts.
 
+## Collection construction models (v0.0.3 breaking change)
+
+`parse_source`, `parse_package`, and complete inspection results now represent collection construction as one of `model.value.collection.sequence`, `.mapping`, or `.set`. Each uses the same declared roles, in order: `construction: scalar` (`"literal"`, `"builtin"`, `"comprehension"`); `immutable: scalar` (an exact boolean); and `inputs: nodes` (the written construction expressions, **not** inferred result elements). These scalar differences contribute to structural equality and hashing, and are not Features.
+
+- Literal `[1, 2]` produces Sequence, `construction="literal"`, `immutable=False`, and two literal input Models. `(1, 2)` has `immutable=True`; `{"a": 1, **rest}` produces Mapping with ordered `dictionary_entry` inputs.
+- Stable built-in calls (`list`, `tuple`, `dict`, `set`, `frozenset`; `frozendict` on Python 3.15+) produce the corresponding Collection with `construction="builtin"` and **argument** Models, preserving keyword argument forms; `*`-unpacking and extra positional arguments are **not** normalized. Sequence/set constructors require 0–1 positional arguments with no keywords; mapping constructors allow 0–1 positional arguments plus keywords (including `**`). A same-name write or possible wildcard import in a visible scope retains an ordinary `model.value.call`. This deliberately does not verify runtime object identity or evaluate iteration.
+- `inputs` depends on `construction`: `literal` stores direct elements/dictionary entries; `builtin` stores original argument Models; `comprehension` stores exactly one nested comprehension Model. The Collection and its nested comprehension can share an identical span in `walk()`; Model identity and position are distinct. List, set, and dict comprehensions produce Collection with `construction="comprehension"` and one nested Model of the previous `model.value.comprehension.*` kind. That child retains `element`/`key`/`value`/`mapping` and `clauses`. Generator expressions are unchanged.
+- Tuple/list unpacking targets are **not** Collection construction; `model.structural_part.sequence_target` has `spelling` (`"tuple"` or `"list"`) and `elements` (target Models). Existing code relying on `.collection.list`, `.collection.tuple`, `.collection.dict`, or the former value-collection `elements`/`entries` roles must be updated.
+
+```python
+import shikake
+
+root = shikake.parse_source("a = (1, 2)\nb = tuple(values)\n")
+first, second = (statement.get_node("value") for statement in root.get_nodes("body"))
+assert first.kind.id == second.kind.id == "model.value.collection.sequence"
+assert first.get_scalar("immutable") is True
+assert first.get_scalar("construction") == "literal"
+assert second.get_scalar("construction") == "builtin"
+assert len(second.get_nodes("inputs")) == 1  # the argument, not result elements
+```
+
+See [EXPRESSIONS.SPEC_032](../../devdocs/canonical_sources/specification/expressions.py) and [LAYOUTS.SPEC_056](../../devdocs/canonical_sources/specification/layouts.py).
+
 ## API_001: `shikake.parse_source`
 
 **Operation.** Parse one Python source string into a Model using Strict analysis.
@@ -230,7 +253,7 @@ The Model tree and relationship candidates are independent kinds of information.
 - **Result:** `BaseReference`
 - **Specifications:** [RELATIONS.SPEC_002](../../devdocs/canonical_sources/specification/relations.py)
 
-Discovered candidates do not establish runtime inheritance.
+Discovered candidates do not establish runtime inheritance. When the root name is a standard built-in name with no same-named binding in an inner visible scope, `binding` is the module-level built-in state; for example, `class AppError(Exception)` with no same-named write gives `BindingState("builtin", False, False)`.
 
 ## API_014: `shikake.OverrideCandidate`
 
@@ -246,10 +269,10 @@ Two evidence values distinguish a direct base from an indirect ancestor. Runtime
 
 **Type.** Three independent dimensions of a name's syntactic introduction, possible rebinding, and possible deletion.
 
-- **Inputs:** `introduction: Literal["stable", "unstable"], may_rebind: bool, may_delete: bool`
+- **Inputs:** `introduction: Literal["stable", "unstable", "builtin"], may_rebind: bool, may_delete: bool`
 - **Result:** `BindingState`
 
-A first ordinary assignment such as `x = 1` gives `BindingState("stable", False, False)`. A second `x = 2` makes `may_rebind=True`. A lone `n += 1` gives `BindingState("unstable", True, False)` because augmented assignment reads an existing binding. A single conditional assignment can be `unstable` with `may_rebind=False`, while writes in loops may repeat. These properties do **not** guarantee definite assignment at any read. For details, see [BINDING.SPEC_002](../../devdocs/canonical_sources/specification/binding.py) and [BINDING.SPEC_003](../../devdocs/canonical_sources/specification/binding.py).
+A name in the fixed standard built-in inventory for the parsing Python minor version is treated as virtually introduced at module entry: `BindingState("builtin", False, False)`. A module-level write to that name yields `may_rebind=True`; a deletion yields `may_delete=True`. Local shadowing remains independent. A first ordinary assignment such as `x = 1` gives `BindingState("stable", False, False)`. A second `x = 2` makes `may_rebind=True`. A lone `n += 1` gives `BindingState("unstable", True, False)` because augmented assignment reads an existing binding. A single conditional assignment can be `unstable` with `may_rebind=False`, while writes in loops may repeat. These properties do **not** guarantee definite assignment at any read. For details, see [BINDING.SPEC_002](../../devdocs/canonical_sources/specification/binding.py) and [BINDING.SPEC_003](../../devdocs/canonical_sources/specification/binding.py).
 - **Specifications:** [BINDING.SPEC_001](../../devdocs/canonical_sources/specification/binding.py), [BINDING.SPEC_002](../../devdocs/canonical_sources/specification/binding.py), [BINDING.SPEC_003](../../devdocs/canonical_sources/specification/binding.py), [BINDING.SPEC_004](../../devdocs/canonical_sources/specification/binding.py)
 
 These fields describe syntactic binding facts, not whether a name is definitely assigned when read. Definite-assignment checks are outside shikake's scope; consumers needing them must implement checks under their own language restrictions or translation rules.
@@ -258,11 +281,11 @@ These fields describe syntactic binding facts, not whether a name is definitely 
 
 **Type.** A name-binding fact for a particular module and lexical scope.
 
-- **Inputs:** `module: str, scope: Model, name: str, state: BindingState`
+- **Inputs:** `module: str, scope: Model, name: str, state: BindingState, scope_kind: Literal["module", "class", "function", "annotation"] | None = None`
 - **Result:** `NameBinding`
 - **Specifications:** [BINDING.SPEC_014](../../devdocs/canonical_sources/specification/binding.py)
 
-The same spelling in different scopes is not conflated. `state` does not establish definite assignment at any read site.
+The same spelling in different lexical scopes is not conflated. In generic PEP 695 definitions, the annotation scope and the function/class body can share the **same** owner Model; `scope_kind` distinguishes these independent facts (`"annotation"` versus `"function"` or `"class"`). Thus `bindings_for(definition_model, "T")` may return two records with identical three-axis states but different `scope_kind` values. Library-generated records always set this property; manually constructed records may omit it (default `None`). `state` does not establish definite assignment at any read site.
 
 ## API_017: `shikake.SourceInspection`
 
@@ -447,7 +470,7 @@ Partial analysis reports an `external_definition` diagnostic.
 - **Result:** `tuple[NameBinding, ...]`
 - **Specifications:** [BINDING.SPEC_014](../../devdocs/canonical_sources/specification/binding.py)
 
-The scope must be the same Model object as `NameBinding.scope`, not merely structurally equal. Only matching names are included, in their original order; an unmatched query returns `()`.
+The scope must be the exact same Model object, not merely structurally equal. A generic definition may own distinct annotation and body lexical bindings with the same `scope` Model; distinguish returned records using `scope_kind`. Explicitly written binding facts retain their order. For a module Model in this parsed package, a built-in name also has a virtual initial binding, returned on demand even if absent from the `name_bindings` enumeration. Other unmatched queries return `()`. This does not resolve values or merge local and module scopes.
 
 ## API_039: `shikake.PackageModel.bases_for`
 
@@ -720,3 +743,22 @@ A file containing comments but no code returns all of its comments for **both** 
 **Value.** A `tuple[Comment, ...]` containing all comments in source order. Type-comment text is included without interpretation. A `SourceComments` object is the result of the explicit `collect_comments()` call. There is no separate Model-origin or package-wide comment query. Instead, callers use `Model.span` line numbers with the existing queries and collect comments separately for each source. A module root or other Model can have `span=None`; Models sharing a line give the same line-query results. The library neither checks that the Model and comments came from the same source nor infers comment ownership.
 
 **Input validation:** Line numbers must be non-boolean integers >= 1. Invalid types raise `TypeError`; non-positive lines or reversed ranges raise `ValueError`. `collect_comments()` requires a Unicode `str`, not bytes. The comment query API does not change the behavior of any existing AST-based modeling entry point.
+
+## API_064: `shikake.SourceInspection.bindings_for`
+
+**Operation.** Query lexical binding facts within a complete source inspection, including an implicit built-in module introduction.
+
+- **Inputs:** `scope: Model, name: str`
+- **Result:** `tuple[NameBinding, ...]`
+- **Specifications:** [BINDING.SPEC_014](../../devdocs/canonical_sources/specification/binding.py), [BINDING.SPEC_017](../../devdocs/canonical_sources/specification/binding.py)
+
+Only a complete inspection supplies facts. The exact scope Model identity is required; a generic definition may return independent annotation and body lexical facts, distinguished by `scope_kind`. Module-level built-in names can be returned on demand even when absent from the `name_bindings` enumeration. The method does not select an actual runtime referent or traverse enclosing scopes to resolve a particular name read.
+
+```python
+import shikake
+
+inspected = shikake.inspect_source("value = tuple([1, 2])")
+assert inspected.complete and inspected.model is not None
+(binding,) = inspected.bindings_for(inspected.model, "tuple")
+assert binding.state == shikake.BindingState("builtin", False, False)
+```

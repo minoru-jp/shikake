@@ -12,12 +12,34 @@ from shikumi_devdoc.norms.document import title
 )
 class CHANGELOG:
     """本書は利用者に影響する変更を**リリース単位**で記録します。設計経緯と採否理由は
-    `devdocs/canonical_sources/development_history/pre_release.py` および
-    `devdocs/canonical_sources/development_history/performance.py` と
-    `devdocs/canonical_sources/development_history/comments.py` に記録します。
+    `devdocs/canonical_sources/development_history/pre_release.py`、
+    `devdocs/canonical_sources/development_history/performance.py`、
+    `devdocs/canonical_sources/development_history/comments.py`、
+    `devdocs/canonical_sources/development_history/builtins.py` に記録します。
 
-    `0.0.1` は2026年10月23日付の初回Alphaリリース、`0.0.2` は2026年10月24日付のリリースとして記録します。
+    `0.0.1` は2026年10月23日付の初回Alphaリリース、`0.0.2` は2026年10月24日付のリリースとして記録します。`0.0.3` は2026年10月24日付の公開準備済み変更として記録し、PyPI・GitHubへの公開完了とは区別します。
     変更項目は公開APIと利用者向け機能の範囲を示します。"""
+
+    class VERSION_0_0_3:
+        """v0.0.3の公開準備版。組み込み名を既存の束縛3軸へ統合し、Collection Modelを一般化します。公開Model契約と既存の束縛情報に破壊的変更を含みます。"""
+
+        title @= "0.0.3（2026-10-24、公開準備）"
+
+        class ADDED:
+            """- **組み込み名の暗黙導入**：Pythonマイナーバージョンごとに固定した標準組み込み名を、各モジュールの仮想的な初期導入 `BindingState(introduction="builtin", may_rebind=False, may_delete=False)` として既存3軸で評価します。モジュールでの書き込み・削除とstar importによる競合の可能性は通常どおり `may_rebind`・`may_delete` に反映し、同名のローカル束縛は別に扱います。標準名の一覧は `site` の追加名や実行中の `builtins` の変更に左右されません。
+            - **必要時の束縛照会**：`PackageModel.bindings_for(module, name)` と完全な `SourceInspection.bindings_for(module, name)` は、明示的な書き込みがない組み込み名の暗黙導入も返します。読み取り専用の組み込み名を `name_bindings` に大量展開せず、不完全なPartial結果（`PackageInspection.package` 経由の照会を含む）では生成しません。実行時の参照先や型は確定しません。
+            - **字句スコープの識別**：ライブラリが生成する `NameBinding` は `scope_kind`（`module`・`class`・`function`・`annotation`）を持ちます。利用者が手動で構築する場合は省略でき、省略時は `None` です。"""
+
+            title @= "追加した機能"
+
+        class CHANGED:
+            """- **Collectionの一般化**：値のCollectionはSequence・Mapping・Setの3つの具体Kind（`model.value.collection.sequence`・`.mapping`・`.set`）と共通Structure `collection_construction`（`construction`・`immutable`・`inputs`）へ整理しました。従来の `.list`・`.tuple`・`.dict` Kindとコレクション固有のroleは生成しません。`inputs` はliteralでは直接の要素・辞書entry、builtinでは記述された引数Model、comprehensionでは元の内包表記Model1個を保持します。Featureは増やしません。
+            - **保守的な組み込みコンストラクタの認定**：`list`・`tuple`・`dict`・`set`・`frozenset` と、Python 3.15以降の `frozendict` の呼び出しは、可視スコープに同名の書き込み・削除・star importがなく、引数の記述形式が対応範囲内のときだけCollectionになります。`list`・`tuple`・`set`・`frozenset` は位置引数0〜1個でキーワード引数と `*` 引数なし、`dict`・`frozendict` は位置引数0〜1個とキーワード引数（`**` を含む）で `*` 引数なしです。PEP 695の型パラメータとクラス直下の注釈スコープの可視性はPythonの字句規則に従います。それ以外は通常の `model.value.call` のままで、実行時の参照先や要素は推論しません。
+            - **内包表記と代入ターゲット**：リスト・集合・辞書の内包表記は、元の内包表記Modelを唯一の `inputs` 子に持つCollectionになります。generator式は変わりません。Tuple/Listの代入先は値のCollectionではなく、`spelling`・`elements` を持つ `model.structural_part.sequence_target` で表します。`async`・`lazy` Featureは変わりません。
+            - **既存の束縛情報への影響**：組み込み名と同名のモジュール直下の書き込み・定義（例：`def open(...)`）は、0.0.2の `BindingState("stable", False, False)` から `BindingState("builtin", True, False)` になります。組み込み名を基底に書いた `BaseReference.binding`（例：`class AppError(Exception)`）は `None` から `BindingState("builtin", False, False)` になります。`BindingState.introduction` には `"builtin"` が加わりました。
+            - **型パラメータの束縛**：PEP 695の型パラメータは、定義本体とは別の注釈スコープの束縛になりました。総称定義の型パラメータと本体の同名束縛は1件に合成されず、`scope_kind` の異なる2件として同じ定義Modelから返ります。型エイリアスの型パラメータも束縛として報告します。"""
+
+            title @= "変更（公開Model契約と束縛情報の破壊的変更を含む）"
 
     class VERSION_0_0_2:
         """0.0.2の公開内容。コメント情報と行番号による照会を追加しました。"""

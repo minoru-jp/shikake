@@ -309,6 +309,7 @@ class PUBLIC_API:
         input @= "attribute_modified: bool = False"
         output @= "BaseReference"
         detail @= "候補の発見は実行時の継承関係を確定しない。"
+        detail @= '根の識別子が標準組み込み名で、内側の可視スコープに同名の束縛がない場合、bindingはモジュールでの組み込み名の3軸となる。例えば同名の書き込みがない `class AppError(Exception)` では `BindingState("builtin", False, False)` となる。'
 
     class API_014:
         "同名定義の可能なオーバーライド関係と根拠を保持する。"
@@ -337,11 +338,11 @@ class PUBLIC_API:
             BINDING.SPEC_003,
             BINDING.SPEC_004,
         )
-        input @= 'introduction: Literal["stable", "unstable"]'
+        input @= 'introduction: Literal["stable", "unstable", "builtin"]'
         input @= "may_rebind: bool"
         input @= "may_delete: bool"
         output @= "BindingState"
-        detail @= "`x = 1` の単独代入は `(stable, False, False)`、`x = 1; x = 2` は `(stable, True, False)`、単独の `n += 1` は `(unstable, True, False)`。条件付きの単独代入は導入のみ `unstable` になり得る。ループ内の書き込みは反復し得る。操作が実際に実行されるか・読み取り時点の確定代入は保証せず、必要なら利用側の言語規則・変換条件に基づいて別途検査する。"
+        detail @= "組み込み名はモジュールの暗黙の初期導入として `(builtin, False, False)` から始まり、当該名へのモジュール書き込みがあれば `may_rebind=True`。通常名の `x = 1` の単独代入は `(stable, False, False)`、`x = 1; x = 2` は `(stable, True, False)`、単独の `n += 1` は `(unstable, True, False)`。条件付きの単独代入は導入のみ `unstable` になり得る。ループ内の書き込みは反復し得る。操作が実際に実行されるか・読み取り時点の確定代入は保証せず、必要なら利用側の言語規則・変換条件に基づいて別途検査する。"
 
     class API_016:
         "指定モジュールと字句スコープに属する名前の3軸を記録する。"
@@ -353,8 +354,9 @@ class PUBLIC_API:
         input @= "scope: Model"
         input @= "name: str"
         input @= "state: BindingState"
+        input @= 'scope_kind: Literal["module", "class", "function", "annotation"] | None = None'
         output @= "NameBinding"
-        detail @= "同名でもスコープを混同しない。stateの3軸は確定代入の結果ではない。"
+        detail @= "同名でもスコープを混同しない。PEP 695の型パラメータ用annotationと定義のfunction/classは、同じscope Modelを共有し得るためscope_kindで区別する。同じModelを対象としたbindings_for()は双方を返し得る。ライブラリ生成レコードのscope_kindは必ず設定され、利用者が手動作成して省略した場合はNone。stateの3軸は確定代入の結果ではない。"
 
     class API_017:
         "単一ソースのModelまたは診断を持つPartial結果。"
@@ -578,10 +580,10 @@ class PUBLIC_API:
 
         name @= "shikake.PackageModel.bindings_for"
         kind @= OPERATION
-        related @= (BINDING.SPEC_014,)
+        related @= (BINDING.SPEC_014, BINDING.SPEC_017)
         input @= "scope: Model, name: str"
         output @= "tuple[NameBinding, ...]"
-        detail @= "scopeはNameBinding.scopeと同一オブジェクトでなければ一致しない。nameも一致する束縛だけを元の列挙順で返し、該当なしでは空タプルを返す。構造的に等しい別Modelは照会対象に含めない。"
+        detail @= "scopeはNameBinding.scopeと同一オブジェクトでなければ一致しない。同じModelへ所属する注釈スコープ・定義本体スコープの束縛が複数返る場合はscope_kindで区別する。明示された束縛は元の列挙順で返す。組み込み名の場合、パッケージ内のモジュールModelであれば未列挙でも必要時に暗黙導入を返す。ほかの未一致は空タプル。構造的に等しい別Modelは一致させない。"
 
     class API_039:
         "同一クラスの書かれた基底式を順に返す。"
@@ -910,3 +912,13 @@ if function.span is not None:
         detail @= (
             "元の # コメントをすべて保持した不変タプル。型コメントも特別扱いしない。"
         )
+
+    class API_064:
+        """完全な単一ソースの束縛をidentity単位で検索し、組み込み名の暗黙導入も必要時に取得する。"""
+
+        name @= "shikake.SourceInspection.bindings_for"
+        kind @= OPERATION
+        related @= (BINDING.SPEC_014, BINDING.SPEC_017)
+        input @= "scope: Model, name: str"
+        output @= "tuple[NameBinding, ...]"
+        detail @= "完全なSourceInspectionのみ。scopeには同じ解析結果のModelを渡す。記述された名前の束縛はidentityで照会する。同じ定義Modelに注釈スコープと本体スコープが付く場合はscope_kindで区別する。ソースのモジュールModelとPython組み込み名であれば暗黙導入を合成して返す。問い合わせ結果がname_bindingsの列挙に含まれるとは限らない。入れ子スコープを越えた参照先の確定や実行時の名前解決は行わない。"

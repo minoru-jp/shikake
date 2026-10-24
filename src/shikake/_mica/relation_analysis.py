@@ -142,6 +142,8 @@ def _analyze_package_facts(
     modules: dict[str, tuple[Model, bool]],
     selected: frozenset[str],
     syntax: Mapping[str, tuple[SyntaxFacts, Mapping[int, Model]]],
+    *,
+    builtin_star_sink: set[tuple[str, str]] | None = None,
 ) -> tuple[
     tuple[OverrideCandidate, ...], tuple[BaseReference, ...], tuple[NameBinding, ...]
 ]:
@@ -152,6 +154,8 @@ def _analyze_package_facts(
         *(analyzer.required_definitions for analyzer in scheduled)
     )
     facts = _collect_facts(modules, syntax, definitions=required)
+    if builtin_star_sink is not None:
+        builtin_star_sink.update(facts.builtin_star_conflicts())
     context = _AnalysisContext(facts, _ClassHierarchy(facts), [])
     completed: set[str] = set()
     for analyzer in scheduled:

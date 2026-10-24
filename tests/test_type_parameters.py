@@ -28,7 +28,7 @@ class TypeDeclarationContracts(unittest.TestCase):
     def test_kind_structure_feature_contracts(self) -> None:
         index = shikake.kind_index()
         self.assertEqual(
-            (len(index.all_kinds()), len(index.all_structures())), (143, 61)
+            (len(index.all_kinds()), len(index.all_structures())), (143, 62)
         )
         self.assertEqual(len(index.all_features()), 2)
         self.assertIsNone(index.structure_of("model.definition.type_parameter"))
@@ -93,7 +93,7 @@ class TypeDeclarationContracts(unittest.TestCase):
         self.assertEqual(t1.get("name"), "T")
         self.assertEqual(child(t1, "restriction").kind.id, "model.value.named")
         self.assertEqual(
-            child(t2, "restriction").kind.id, "model.value.collection.tuple"
+            child(t2, "restriction").kind.id, "model.value.collection.sequence"
         )
         self.assertIsNone(t1.get("default"))
         self.assertEqual(t1.span.line if t1.span is not None else None, 1)

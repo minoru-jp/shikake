@@ -176,6 +176,23 @@ class OptionalValue:
     part @= Role("value", "optional_node")
 
 
+class CollectionConstruction:
+    """Inputs are construction expressions, not inferred resulting elements."""
+
+    structure_id @= "collection_construction"
+    part @= Role("construction", "scalar")
+    part @= Role("immutable", "scalar")
+    part @= Role("inputs", "nodes")
+
+
+class TargetSequence:
+    """Tuple/list destructuring target is not collection construction."""
+
+    structure_id @= "target_sequence"
+    part @= Role("spelling", "scalar")
+    part @= Role("elements", "nodes")
+
+
 class OrderedElements:
     structure_id @= "ordered_elements"
     part @= Role("elements", "nodes")
@@ -341,11 +358,6 @@ class ValueAccessIndex:
     structure_id @= "value_access_index"
     part @= Role("target", "node")
     part @= Role("index", "node")
-
-
-class ValueCollectionDict:
-    structure_id @= "value_collection_dict"
-    part @= Role("entries", "nodes")
 
 
 class ValueComprehensionDictUnpacking:

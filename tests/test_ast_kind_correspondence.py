@@ -96,16 +96,20 @@ class AstKindCorrespondenceTests(unittest.TestCase):
                 "body.0.value.index",
             ),
             Case(
-                "ast.Tuple [value]", "model.value.collection.tuple", "result = (a, b)"
+                "ast.Tuple [value]",
+                "model.value.collection.sequence",
+                "result = (a, b)",
             ),
-            Case("ast.List [value]", "model.value.collection.list", "result = [a, b]"),
+            Case(
+                "ast.List [value]", "model.value.collection.sequence", "result = [a, b]"
+            ),
             Case("ast.Set", "model.value.collection.set", "result = {a, b}"),
-            Case("ast.Dict", "model.value.collection.dict", "result = {a: b}"),
+            Case("ast.Dict", "model.value.collection.mapping", "result = {a: b}"),
             Case(
                 "ast.Dict [entry]",
                 "model.structural_part.dictionary_entry",
                 "result = {a: b}",
-                "body.0.value.entries.0",
+                "body.0.value.inputs.0",
             ),
             Case(
                 "ast.BoolOp [And]",
@@ -144,17 +148,17 @@ class AstKindCorrespondenceTests(unittest.TestCase):
             ),
             Case(
                 "ast.ListComp",
-                "model.value.comprehension.list",
+                "model.value.collection.sequence",
                 "result = [x for x in seq]",
             ),
             Case(
                 "ast.SetComp",
-                "model.value.comprehension.set",
+                "model.value.collection.set",
                 "result = {x for x in seq}",
             ),
             Case(
                 "ast.DictComp",
-                "model.value.comprehension.dict",
+                "model.value.collection.mapping",
                 "result = {x: x for x in seq}",
             ),
             Case(
@@ -166,13 +170,13 @@ class AstKindCorrespondenceTests(unittest.TestCase):
                 "ast.comprehension",
                 "model.structural_part.comprehension_clause",
                 "result = [x for x in seq]",
-                "body.0.value.clauses.0",
+                "body.0.value.inputs.0.clauses.0",
             ),
             Case(
                 "ast.Starred [value]",
                 "model.value.starred_expansion",
                 "result = [*seq]",
-                "body.0.value.elements.0",
+                "body.0.value.inputs.0",
             ),
             Case(
                 "ast.Starred [target]",
@@ -182,13 +186,13 @@ class AstKindCorrespondenceTests(unittest.TestCase):
             ),
             Case(
                 "ast.Tuple [target]",
-                "model.value.collection.tuple",
+                "model.structural_part.sequence_target",
                 "a, b = seq",
                 "body.0.targets.0",
             ),
             Case(
                 "ast.List [target]",
-                "model.value.collection.list",
+                "model.structural_part.sequence_target",
                 "[a, b] = seq",
                 "body.0.targets.0",
             ),
@@ -306,12 +310,12 @@ class AstKindCorrespondenceTests(unittest.TestCase):
                 [
                     Case(
                         "ast.ListComp [elt is ast.Starred]",
-                        "model.value.comprehension.list",
+                        "model.value.collection.sequence",
                         "result = [*part for part in groups]",
                     ),
                     Case(
                         "ast.SetComp [elt is ast.Starred]",
-                        "model.value.comprehension.set",
+                        "model.value.collection.set",
                         "result = {*part for part in groups}",
                     ),
                     Case(
@@ -321,7 +325,7 @@ class AstKindCorrespondenceTests(unittest.TestCase):
                     ),
                     Case(
                         "ast.DictComp [value is None]",
-                        "model.value.comprehension.dict.unpacking",
+                        "model.value.collection.mapping",
                         "result = {**part for part in groups}",
                     ),
                 ]
@@ -630,9 +634,10 @@ class AstKindCorrespondenceTests(unittest.TestCase):
         function = root.get_nodes("body")[0]
         self.assertEqual(function.features, ("async",))
         comp = function.get_node("body").get_nodes("statements")[0].get_node("value")
-        self.assertEqual(comp.kind.id, "model.value.comprehension.list")
+        self.assertEqual(comp.kind.id, "model.value.collection.sequence")
         self.assertEqual(comp.features, ())
-        clause = comp.get_nodes("clauses")[0]
+        self.assertEqual(comp.get("construction"), "comprehension")
+        clause = comp.get_nodes("inputs")[0].get_nodes("clauses")[0]
         self.assertEqual(clause.kind.id, "model.structural_part.comprehension_clause")
         self.assertEqual(clause.features, ("async",))
         self.assertTrue(clause.get("is_async"))

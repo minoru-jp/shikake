@@ -85,7 +85,7 @@ class ControlFlowModelTests(unittest.TestCase):
         self.assertIsNone(by_items.get("condition"))
         self.assertIsNotNone(by_items.get("source"))
         self.assertEqual(
-            one(by_items, "binding").kind.id, "model.value.collection.tuple"
+            one(by_items, "binding").kind.id, "model.structural_part.sequence_target"
         )
         self.assertIsNone(by_condition.get("binding"))
         self.assertIsNone(by_condition.get("source"))

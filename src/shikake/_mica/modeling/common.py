@@ -84,25 +84,40 @@ def build_comprehension(
     )
     if isinstance(node, ast.DictComp):
         if node.value is None:
-            return f.make(
+            inner = f.make(
                 "model.value.comprehension.dict.unpacking",
                 span=_span(node),
                 mapping=built.pop(node.key),
                 clauses=clauses,
             )
-        return f.make(
-            "model.value.comprehension.dict",
+        else:
+            inner = f.make(
+                "model.value.comprehension.dict",
+                span=_span(node),
+                key=built.pop(node.key),
+                value=built.pop(node.value),
+                clauses=clauses,
+            )
+        category = "mapping"
+    else:
+        kind = {
+            ast.ListComp: "list",
+            ast.SetComp: "set",
+            ast.GeneratorExp: "generator",
+        }[type(node)]
+        inner = f.make(
+            f"model.value.comprehension.{kind}",
             span=_span(node),
-            key=built.pop(node.key),
-            value=built.pop(node.value),
+            element=built.pop(node.elt),
             clauses=clauses,
         )
-    kind = {ast.ListComp: "list", ast.SetComp: "set", ast.GeneratorExp: "generator"}[
-        type(node)
-    ]
+        if isinstance(node, ast.GeneratorExp):
+            return inner  # A generator expression is not a built collection.
+        category = "sequence" if isinstance(node, ast.ListComp) else "set"
     return f.make(
-        f"model.value.comprehension.{kind}",
+        f"model.value.collection.{category}",
         span=_span(node),
-        element=built.pop(node.elt),
-        clauses=clauses,
+        construction="comprehension",
+        immutable=False,
+        inputs=(inner,),
     )

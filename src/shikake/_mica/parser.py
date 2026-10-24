@@ -10,6 +10,7 @@ from typing import Literal, cast
 from shikake.external import ExternalDefinitions, load_external_definitions
 
 from .ast_facts import collect_syntax_facts
+from .builtin_collections import BuiltinCollectionRecognition
 from .external_structures import (
     _LOCAL_EXTERNAL_ERROR_CODES,
     ExternalModelingError,
@@ -105,11 +106,13 @@ class _Builder:
         local_external_errors: Mapping[int, tuple[ExternalModelingError, ...]]
         | None = None,
         external: _ExternalStructures | None = None,
+        collections: BuiltinCollectionRecognition | None = None,
     ) -> None:
         self.factory = ModelFactory(index)
         # Minimal AST-to-Model bridge for successfully modeled statements.
         self.statement_models: dict[int, Model] = {}
         self.external = external
+        self.collections = collections
         self.on_unsupported = on_unsupported
         self.on_external = on_external
         self.local_external_errors = local_external_errors or {}
@@ -672,14 +675,10 @@ class _Builder:
                     value=built.pop(current.value),
                 )
             else:
-                kind = (
-                    "model.value.collection.tuple"
-                    if isinstance(current, ast.Tuple)
-                    else "model.value.collection.list"
-                )
                 model = f.make(
-                    kind,
+                    "model.structural_part.sequence_target",
                     span=_span(current),
+                    spelling="tuple" if isinstance(current, ast.Tuple) else "list",
                     elements=tuple(built.pop(item) for item in current.elts),
                 )
             built[current] = model
@@ -752,9 +751,10 @@ def parse_source(
     _assert_import_policy(
         tree, prepared, import_policy=import_policy, allowed_modules=selected_modules
     )
-    matcher = (
-        _ExternalStructures.for_facts(collect_syntax_facts(tree), prepared)
-        if prepared
-        else None
-    )
-    return _Builder(resolved_index, external=matcher).module(tree)
+    syntax = collect_syntax_facts(tree, include_references=prepared is not None)
+    matcher = _ExternalStructures.for_facts(syntax, prepared) if prepared else None
+    return _Builder(
+        resolved_index,
+        external=matcher,
+        collections=BuiltinCollectionRecognition(tree, syntax),
+    ).module(tree)

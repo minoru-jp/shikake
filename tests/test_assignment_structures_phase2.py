@@ -60,12 +60,12 @@ class AssignmentStructureTests(unittest.TestCase):
         source = "(first, [second, *remaining]), last = values\n"
         (stmt,) = nodes(shikake.parse_source(source), "body")
         (target,) = nodes(stmt, "targets")
-        self.assertEqual(target.kind.id, "model.value.collection.tuple")
+        self.assertEqual(target.kind.id, "model.structural_part.sequence_target")
         first_tuple, last = nodes(target, "elements")
         self.assertEqual(last.get("name"), "last")
         first, inner_list = nodes(first_tuple, "elements")
         self.assertEqual(first.get("name"), "first")
-        self.assertEqual(inner_list.kind.id, "model.value.collection.list")
+        self.assertEqual(inner_list.kind.id, "model.structural_part.sequence_target")
         second, starred = nodes(inner_list, "elements")
         self.assertEqual(second.get("name"), "second")
         self.assertEqual(starred.kind.id, "model.structural_part.starred_target")
@@ -121,7 +121,7 @@ class AssignmentStructureTests(unittest.TestCase):
         source = "for first, *remaining in batches:\n    pass\n"
         (iteration,) = nodes(shikake.parse_source(source), "body")
         target = one(iteration, "binding")
-        self.assertEqual(target.kind.id, "model.value.collection.tuple")
+        self.assertEqual(target.kind.id, "model.structural_part.sequence_target")
         self.assertEqual(nodes(target, "elements")[0].get("name"), "first")
         starred = nodes(target, "elements")[1]
         self.assertEqual(starred.kind.id, "model.structural_part.starred_target")

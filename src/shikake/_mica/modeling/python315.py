@@ -12,6 +12,13 @@ from .common import (
     comprehension_children,
 )
 
+# Python 3.15 adds frozendict to the built-in namespace (PEP 814).
+# Recognition additionally checks the running interpreter's BUILTIN_NAMES.
+COLLECTION_BUILTINS_315: dict[str, tuple[str, bool]] = {
+    "frozendict": ("mapping", True),
+}
+
+
 if TYPE_CHECKING:
     from ..parser import _Builder
 

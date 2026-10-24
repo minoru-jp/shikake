@@ -36,7 +36,7 @@ class AsyncModelingTests(unittest.TestCase):
     def test_kind_structure_feature_independence(self) -> None:
         index = shikake.kind_index()
         self.assertEqual(len(index.all_kinds()), 143)
-        self.assertEqual(len(index.all_structures()), 61)
+        self.assertEqual(len(index.all_structures()), 62)
         self.assertEqual(
             [feature.id for feature in index.all_features()], ["async", "lazy"]
         )
@@ -141,14 +141,14 @@ async def run(stream, cm):
         entries = models(context, "contexts")
         self.assertEqual(len(entries), 2)
         self.assertEqual(
-            model(entries[0], "target").kind.id, "model.value.collection.tuple"
+            model(entries[0], "target").kind.id, "model.structural_part.sequence_target"
         )
         self.assertIsNone(entries[1].get("target"))
         iteration = models(model(context, "body"), "statements")[0]
         self.assertEqual(iteration.kind.id, "model.statement.control.iteration")
         self.assertEqual(iteration.features, ("async",))
         self.assertEqual(
-            model(iteration, "binding").kind.id, "model.value.collection.tuple"
+            model(iteration, "binding").kind.id, "model.structural_part.sequence_target"
         )
         self.assertIsNotNone(iteration.get("else_block"))
         assignment = models(model(iteration, "body"), "statements")[0]
@@ -173,29 +173,36 @@ async def collect(groups):
         self.assertEqual(
             kinds,
             [
-                "model.value.comprehension.list",
-                "model.value.comprehension.set",
-                "model.value.comprehension.dict",
+                "model.value.collection.sequence",
+                "model.value.collection.set",
+                "model.value.collection.mapping",
                 "model.value.comprehension.generator",
-                "model.value.comprehension.list",
+                "model.value.collection.sequence",
             ],
         )
         first = model(assignments[0], "value")
-        clauses = models(first, "clauses")
+        first_comp = models(first, "inputs")[0]
+        clauses = models(first_comp, "clauses")
         self.assertEqual([clause.features for clause in clauses], [(), ("async",)])
         self.assertEqual([clause.get("is_async") for clause in clauses], [False, True])
         self.assertEqual(len(models(clauses[1], "filters")), 1)
-        self.assertEqual(model(first, "element").kind.id, "model.value.await")
+        self.assertEqual(model(first_comp, "element").kind.id, "model.value.await")
         for assignment in assignments[1:4]:
             construction = model(assignment, "value")
-            (clause,) = models(construction, "clauses")
+            inner = (
+                models(construction, "inputs")[0]
+                if construction.kind.id.startswith("model.value.collection")
+                else construction
+            )
+            (clause,) = models(inner, "clauses")
             self.assertEqual(clause.features, ("async",))
             self.assertIs(clause.get("is_async"), True)
         only_await = model(assignments[4], "value")
         self.assertEqual(only_await.features, ())
-        (ordinary_clause,) = models(only_await, "clauses")
+        only_await_comp = models(only_await, "inputs")[0]
+        (ordinary_clause,) = models(only_await_comp, "clauses")
         self.assertEqual(ordinary_clause.features, ())
-        self.assertEqual(model(only_await, "element").kind.id, "model.value.await")
+        self.assertEqual(model(only_await_comp, "element").kind.id, "model.value.await")
 
     @unittest.skipUnless(
         sys.version_info >= (3, 12), "requires Python 3.12 type statement"

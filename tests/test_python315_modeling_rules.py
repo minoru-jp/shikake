@@ -27,6 +27,9 @@ class Python315ModelingRuleTests(unittest.TestCase):
         comp.value = None  # type: ignore[assignment]  # PEP 798 AST on Python 3.15
         result = self.builder.module(base)
         model = result.get_nodes("body")[0].get_node("value")
+        self.assertEqual(model.kind.id, "model.value.collection.mapping")
+        self.assertEqual(model.get("construction"), "comprehension")
+        (model,) = model.get_nodes("inputs")
         self.assertEqual(model.kind.id, "model.value.comprehension.dict.unpacking")
         self.assertEqual(
             tuple(part.role for part in model.parts()), ("mapping", "clauses")
@@ -39,6 +42,8 @@ class Python315ModelingRuleTests(unittest.TestCase):
         normal = self.builder.expression(
             ast.parse("{x: y for x in items}", mode="eval").body
         )
+        self.assertEqual(normal.kind.id, "model.value.collection.mapping")
+        (normal,) = normal.get_nodes("inputs")
         self.assertEqual(normal.kind.id, "model.value.comprehension.dict")
         self.assertEqual(
             tuple(part.role for part in normal.parts()), ("key", "value", "clauses")
@@ -65,6 +70,12 @@ class Python315ModelingRuleTests(unittest.TestCase):
                     ],
                 )
                 model = self.builder.expression(node)
+                if kind != "generator":
+                    category = "sequence" if kind == "list" else "set"
+                    self.assertEqual(
+                        model.kind.id, f"model.value.collection.{category}"
+                    )
+                    (model,) = model.get_nodes("inputs")
                 self.assertEqual(model.kind.id, f"model.value.comprehension.{kind}")
                 self.assertEqual(
                     model.get_node("element").kind.id, "model.value.starred_expansion"
@@ -77,9 +88,10 @@ class Python315ModelingRuleTests(unittest.TestCase):
         model = self.builder.expression(
             ast.parse("[[*xs] for xs in groups]", mode="eval").body
         )
-        self.assertEqual(model.kind.id, "model.value.comprehension.list")
+        self.assertEqual(model.kind.id, "model.value.collection.sequence")
+        (model,) = model.get_nodes("inputs")
         self.assertEqual(
-            model.get_node("element").kind.id, "model.value.collection.list"
+            model.get_node("element").kind.id, "model.value.collection.sequence"
         )
 
     def test_lazy_feature_is_restricted_to_import_statements(self) -> None:
@@ -218,7 +230,7 @@ class Python315ModelingRuleTests(unittest.TestCase):
                 ],
             )
         result = self.builder.expression(node)
-        self.assertEqual(result.kind.id, "model.value.comprehension.list")
+        self.assertEqual(result.kind.id, "model.value.collection.sequence")
         self.assertEqual(
             sum(
                 item.kind.id == "model.value.comprehension.list"
@@ -230,10 +242,10 @@ class Python315ModelingRuleTests(unittest.TestCase):
     @unittest.skipUnless(sys.version_info >= (3, 15), "requires Python 3.15+")
     def test_real_pep798_strict_and_partial(self) -> None:
         for source, kind in (
-            ("[*xs for xs in groups]", "model.value.comprehension.list"),
-            ("{*xs for xs in groups}", "model.value.comprehension.set"),
+            ("[*xs for xs in groups]", "model.value.collection.sequence"),
+            ("{*xs for xs in groups}", "model.value.collection.set"),
             ("(*xs for xs in groups)", "model.value.comprehension.generator"),
-            ("{**d for d in groups}", "model.value.comprehension.dict.unpacking"),
+            ("{**d for d in groups}", "model.value.collection.mapping"),
         ):
             with self.subTest(source=source):
                 model = shikake.parse_source("result = " + source)

@@ -27,13 +27,13 @@ class BINDING:
         related @= (PARSING.SPEC_002,)
 
     class SPEC_002:
-        """`BindingState.introduction` は識別子の導入が構文上明快な形式であるかを表す。`stable` には最初の独立した導入が無条件かつ競合のない形で書かれていることが必要だが、それだけでは十分ではない。`n += 1` のように既存の束縛を読み取る増分代入は単独で安定した導入とみなさず、他の導入がなければ `unstable` とする。複合文による条件性、既知の競合、または導入に不要なモジュール直下の `global` 宣言があれば `unstable` とする。Pythonの実行結果の安定性や一般的なコード品質を評価するものではない。"""
+        """`BindingState.introduction` は識別子の導入が構文上明快な形式であるかを表す。通常の導入には `stable` と `unstable` を用い、暗黙の組み込み導入には `builtin` を用いる。`stable` には最初の独立した導入が無条件かつ競合のない形で書かれていることが必要だが、それだけでは十分ではない。`n += 1` のように既存の束縛を読み取る増分代入は単独で安定した導入とみなさず、他の導入がなければ `unstable` とする。複合文による条件性、既知の競合、または導入に不要なモジュール直下の `global` 宣言があれば `unstable` とする。Pythonの実行結果の安定性や一般的なコード品質を評価するものではない。"""
 
         title @= "導入の安定性"
         level @= MUST
 
     class SPEC_003:
-        """`may_rebind=True` は対象の字句スコープにおける最初の構文上の導入とは別の導入・書き込み、または繰り返され得る書き込み・増分代入・star importによる競合が記述されることを意味する。最初の通常代入 `x = 1` だけならFalse、`x = 1; x = 2` ならTrueとする。`for` / `while` 本体や内包表記内の反復し得る単独書き込みはTrueとする。一方 `if` 内に一度だけ記述された条件付き導入それ自体は、導入が `unstable` でも追加の書き込みがなければFalseとする。繰り返しの回数や実行経路を評価せず、読み取り時点の代入確定性も表さない。"""
+        """`may_rebind=True` は対象の字句スコープにおける最初の構文上の導入（組み込み名では暗黙の初期導入）とは別の導入・書き込み、または繰り返され得る書き込み・増分代入・star importによる競合が記述されることを意味する。最初の通常代入 `x = 1` だけならFalse、`x = 1; x = 2` ならTrueとする。`for` / `while` 本体や内包表記内の反復し得る単独書き込みはTrueとする。一方 `if` 内に一度だけ記述された条件付き導入それ自体は、導入が `unstable` でも追加の書き込みがなければFalseとする。繰り返しの回数や実行経路を評価せず、読み取り時点の代入確定性も表さない。"""
 
         title @= "再束縛可能性"
         level @= MUST
@@ -69,7 +69,7 @@ class BINDING:
         level @= MUST
 
     class SPEC_009:
-        """識別子の3軸を認定できなければ `binding=None` とする。候補がない・誤りである・不安定であるなどの意味を付け足すステータスを設けない。"""
+        """組み込み名の暗黙導入も含め、識別子の3軸を認定できなければ `binding=None` とする。候補がない・誤りである・不安定であるなどの意味を付け足すステータスを設けない。"""
 
         title @= "取得不能な束縛"
         level @= MUST
@@ -99,7 +99,7 @@ class BINDING:
         level @= MUST
 
     class SPEC_014:
-        """`PackageModel.name_bindings` は各 `NameBinding(module, scope, name, state)` を列挙し、`bindings_for(scope_model, name)` は渡されたModelと同一identityの字句スコープだけを照会する。`NameBinding.state` は `BindingState` の3軸を保持する。関係解析を指定しなくてもこの情報は取得可能で、別のスコープや参照先モジュールの束縛を合成しない。"""
+        """`PackageModel.name_bindings` は各 `NameBinding(module, scope, name, state, scope_kind)` を列挙し、`bindings_for(scope_model, name)` は渡されたModelと同一identityに属する束縛を照会する。`NameBinding.state` は `BindingState` の3軸を保持する。PEP 695の注釈スコープと定義本体スコープは同一の定義Modelを `scope` として共有する場合があり、 `scope_kind`（`module` / `class` / `function` / `annotation`）で字句的に区別する。照会は同一Modelに結び付いた別種の字句スコープを両方返し得る。利用者が手作りしたNameBindingはこの項目を省略でき、省略時はNoneとなる。関係解析を指定しなくてもこの情報は取得可能で、別のスコープや参照先モジュールの束縛を合成しない。組み込み名に限り、モジュールModelへの `bindings_for()` 照会時に、列挙されていない暗黙導入を必要時に補完する（`SPEC_017`）。"""
 
         title @= "NameBindingの取得単位"
         level @= MUST
@@ -116,4 +116,12 @@ class BINDING:
         """式の評価規則により選択的・反復的・省略可能な位置にある導入は `unstable` とする。対象には `and` / `or` の第2被演算子以降、条件式の分岐側、内包表記の要素・各節、`assert` 内の式、連鎖比較の第2比較式以降を含む。短絡演算の先頭、条件式のテスト、比較の最初の比較式は、その構文だけでは条件付きとしない。内包表記内の代入式は反復し得る書き込みとして記録する。外側で既に条件付きならその性質を保持し、値・反復回数・最適化設定を評価して `stable` に救済しない。"""
 
         title @= "式の選択的評価と導入の安定性"
+        level @= MUST
+
+    class SPEC_017:
+        """対象Pythonバージョンに固定された標準組み込み名前は、各モジュール冒頭で暗黙に導入されたものとみなし、`BindingState.introduction="builtin"` を返す。これは安定した暗黙の導入という**構文解析上の前提**であり、実行時の組み込みオブジェクトの解決・不変性を保証しない。モジュールスコープで当該名への最初の明示的な書き込みがあれば `may_rebind=True` とし、削除があれば `may_delete=True` とする。star importによる競合可能性も従来のAST事実で判定する。`global` 書き込みはそのモジュールへ帰属させる。関数・クラス・型パラメータなど別スコープの同名の導入は組み込み導入と合成せず、既存の通常の3軸を適用する。
+        - 対象名の集合は実行インタープリターのPythonマイナーバージョン別に固定する。`site`による `exit`・`help` などの追加、`gettext.install()`、実行中の `builtins` 辞書の変更では集合を変えない。`__builtins__`・`globals()`・`locals()` の動的変更も追跡しない。Python 3.15からは `frozendict`、`sentinel`、`ImportCycleError`、`__lazy_import__` を含む。CPythonの分離起動（`-S -I`）で得た標準の組み込み名と固定集合の一致をバージョン別CIで検査する。対象Pythonバージョン間でModelが変わり得ることは明示的に許容する。
+        - `PackageModel.bindings_for(実在するモジュールModel, name)` と完全な `SourceInspection.bindings_for(モジュールModel, name)` は、組み込み名であればソースに書き込みがなくても必要時に仮想的な `NameBinding` を返す。identityが異なるModel、別スコープ、または不完全なPartial結果（`PackageInspection.package.bindings_for()`を含む）へ暗黙の束縛を生成しない。`name_bindings` 属性は引き続き**明示的な操作から収集した束縛一覧**であり、読み取り専用の組み込み名を無制限に列挙しない。組み込み名の仮想照会はモジュールスコープの情報であり、参照位置の実際の解決先を確定しない。"""
+
+        title @= "組み込み名の暗黙導入と3軸の評価"
         level @= MUST

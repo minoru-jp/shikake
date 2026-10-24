@@ -18,6 +18,8 @@ from shikake.external import ExternalDefinitions
 
 from .ast_facts import SyntaxFacts, collect_syntax_facts
 from .base_references import BaseReference
+from .builtin_collections import BuiltinCollectionRecognition
+from .builtin_names import BUILTIN_NAMES
 from .external_structures import _ExternalStructures
 from .import_policy import (
     ImportPolicy,
@@ -38,7 +40,7 @@ from .relation_analysis import (
     _analyze_package_facts,
     _selected_analyses,
 )
-from .relation_facts import NameBinding
+from .relation_facts import BindingState, NameBinding
 
 
 class _ModelIdentity:
@@ -78,6 +80,13 @@ class PackageModel:
     _base_index: dict[_ModelIdentity, tuple[BaseReference, ...]] = field(
         init=False, repr=False, compare=False
     )
+    _module_index: dict[_ModelIdentity, str] = field(
+        init=False, repr=False, compare=False
+    )
+    _builtin_star_conflicts: frozenset[tuple[str, str]] = field(
+        default_factory=frozenset, repr=False, compare=False
+    )
+    _complete: bool = field(default=True, repr=False, compare=False)
 
     def __repr__(self) -> str:
         """Bounded diagnostic overview without expanding relationship facts."""
@@ -91,6 +100,18 @@ class PackageModel:
 
     def __post_init__(self) -> None:
         """Index the original ordered facts once, without hashing Models."""
+        object.__setattr__(
+            self,
+            "_module_index",
+            {
+                _ModelIdentity(module): module.get_name("name")
+                for module in (
+                    self.model.get_nodes("modules")
+                    if self.model.kind.id == "model.package"
+                    else ()
+                )
+            },
+        )
         bindings: defaultdict[tuple[_ModelIdentity, str], list[NameBinding]] = (
             defaultdict(list)
         )
@@ -121,8 +142,32 @@ class PackageModel:
         )
 
     def bindings_for(self, scope: Model, name: str) -> tuple[NameBinding, ...]:
-        """Find syntactic facts for this name in this exact lexical scope."""
-        return self._binding_index.get((_ModelIdentity(scope), name), ())
+        """Find facts for a Model owner, including distinct lexical scope kinds."""
+        key = _ModelIdentity(scope)
+        recorded = self._binding_index.get((key, name), ())
+        if recorded:
+            return recorded
+        # Do not materialize every built-in for every parsed module. The
+        # synthesized fact belongs only to an exact module Model in this
+        # package and does not appear in the written-name enumeration.
+        module_name = self._module_index.get(key)
+        if self._complete and module_name is not None and name in BUILTIN_NAMES:
+            virtual = (
+                NameBinding(
+                    module_name,
+                    scope,
+                    name,
+                    BindingState(
+                        "builtin",
+                        (module_name, name) in self._builtin_star_conflicts,
+                        False,
+                    ),
+                    "module",
+                ),
+            )
+            self._binding_index[(key, name)] = virtual
+            return virtual
+        return ()
 
     def walk(self) -> Iterator[Model]:
         """Walk only composition, without re-visiting linked Model objects."""
@@ -253,7 +298,11 @@ def parse_package(
         )
         syntax = collect_syntax_facts(tree, include_references=prepared is not None)
         matcher = _ExternalStructures.for_facts(syntax, prepared) if prepared else None
-        builder = _Builder(resolved_index, external=matcher)
+        builder = _Builder(
+            resolved_index,
+            external=matcher,
+            collections=BuiltinCollectionRecognition(tree, syntax),
+        )
         modules[module_name] = (builder.module(tree, name=module_name), is_init)
         source_facts[module_name] = (syntax, builder.statement_models)
     package = ModelFactory(resolved_index).make(
@@ -261,7 +310,16 @@ def parse_package(
         name=folder.name,
         modules=tuple(module for module, _ in modules.values()),
     )
+    builtin_stars: set[tuple[str, str]] = set()
     candidates, bases, bindings = _analyze_package_facts(
-        modules, selected, source_facts
+        modules, selected, source_facts, builtin_star_sink=builtin_stars
     )
-    return PackageModel(package, candidates, bases, selected, bindings)
+    return PackageModel(
+        package,
+        candidates,
+        bases,
+        selected,
+        bindings,
+        _builtin_star_conflicts=frozenset(builtin_stars),
+        _complete=True,
+    )

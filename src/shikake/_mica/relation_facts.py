@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from typing import Literal, TypeAlias
 
 from .ast_facts import SyntaxFacts, SyntaxScope, explicit_import_path
+from .builtin_names import BUILTIN_NAMES
+from .lexical_scopes import binding_owner, visible_owners
 from .model import Model
 
 
@@ -48,7 +50,7 @@ class BindingState:
     additional or repeatable operations, not guaranteed runtime execution.
     """
 
-    introduction: Literal["stable", "unstable"]
+    introduction: Literal["stable", "unstable", "builtin"]
     may_rebind: bool
     may_delete: bool
 
@@ -57,14 +59,17 @@ class BindingState:
 class NameBinding:
     """Properties of a written name in a module or nested lexical scope.
 
-    The owner is an exact module/class/function Model; the name's properties
-    are local to that module, not inferred through imported modules.
+    The owner Model identifies the declaration or module. A generic
+    definition's annotation and body scopes can have the *same* owner Model;
+    scope_kind distinguishes those separate lexical bindings. A None kind is
+    reserved for caller-created records without a declared lexical kind.
     """
 
     module: str
     scope: Model
     name: str
     state: BindingState
+    scope_kind: Literal["module", "class", "function", "annotation"] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,7 +130,7 @@ class _BindingEvent:
 
 @dataclass(slots=True, eq=False)
 class _Scope:
-    kind: Literal["module", "class", "function"]
+    kind: Literal["module", "class", "function", "annotation"]
     parent: _Scope | None
     module: str
     events: dict[str, list[_BindingEvent]] = field(default_factory=dict)
@@ -163,6 +168,20 @@ class _FactIndex:
             for path in self.attribute_changes.get(module, ())
         )
 
+    def builtin_star_conflicts(self) -> frozenset[tuple[str, str]]:
+        """Possible module-level wildcard writes to interpreter built-in names.
+
+        Only modules with star imports pay for this finite check. Query-time
+        synthesized bindings therefore agree with the shared AST fact rules.
+        """
+        return frozenset(
+            (module, name)
+            for module, root in self.modules.items()
+            if root.stars
+            for name in BUILTIN_NAMES
+            if any(self._star_may_write(event, name) for event in root.stars)
+        )
+
     def bindings(self) -> tuple[NameBinding, ...]:
         records: list[NameBinding] = []
         for scope in self.scopes:
@@ -171,7 +190,9 @@ class _FactIndex:
             for name in scope.events:
                 state = self.state(scope, name)
                 if state is not None:
-                    records.append(NameBinding(scope.module, scope.model, name, state))
+                    records.append(
+                        NameBinding(scope.module, scope.model, name, state, scope.kind)
+                    )
         return tuple(records)
 
     def state(self, scope: _Scope, name: str) -> BindingState | None:
@@ -195,6 +216,17 @@ class _FactIndex:
         introductions = [
             event for event in events if event.operation not in {"delete", "annotation"}
         ]
+        # A built-in name is a *virtual* unconditional initial introduction at
+        # module scope. A written module-level operation is therefore a possible
+        # rebind (or deletion), not the first introduction. Local shadowing
+        # remains a separate lexical binding with its ordinary state.
+        if owner.kind == "module" and name in BUILTIN_NAMES:
+            return BindingState(
+                "builtin",
+                bool(introductions)
+                or any(self._star_may_write(item, name) for item in owner.stars),
+                any(event.operation == "delete" for event in events),
+            )
         if not introductions:
             return None
         return BindingState(
@@ -251,32 +283,20 @@ class _FactIndex:
         # star import *might* shadow the name. This also handles cyclic stars.
         return name in root.events or bool(root.stars)
 
+    @staticmethod
+    def _locally_binds(scope: _Scope, name: str) -> bool:
+        return name in scope.events
+
     def _owner(self, scope: _Scope, name: str) -> _Scope:
-        if name in scope.globals:
-            return self.modules[scope.module]
-        if name in scope.nonlocals:
-            current = scope.parent
-            while current is not None and current.kind != "module":
-                if current.kind == "function" and name in current.events:
-                    return current
-                current = current.parent
-        return scope
+        return binding_owner(
+            scope, name, self.modules[scope.module], self._locally_binds
+        )
 
     def _visible_owners(self, site: _DefinitionSite, name: str):
-        """Lexical search path shared by candidate and binding-state queries.
-
-        A class body sees its own declarations, but nested functions/classes
-        never inherit enclosing class namespaces as lexical scopes. Explicit
-        global/nonlocal declarations still redirect to the owning scope.
-        """
-        scope: _Scope | None = site.scope
-        while scope is not None:
-            if scope.kind == "class" and scope is not site.scope:
-                scope = scope.parent
-                continue
-            owner = self._owner(scope, name)
-            yield owner
-            scope = owner.parent
+        """Use the same scope visibility policy as Collection recognition."""
+        return visible_owners(
+            site.scope, name, self.modules[site.module], self._locally_binds
+        )
 
     def reference_state(self, site: _DefinitionSite, name: str) -> BindingState | None:
         """Return root-name syntactic facts in its visible lexical scope."""
@@ -292,6 +312,8 @@ class _FactIndex:
                 # Annotation-only locals mask outer bindings, even though the
                 # annotation supplies no binding state of its own.
                 return None
+            if owner.kind == "module" and name in BUILTIN_NAMES:
+                return self.state(owner, name)
         return None
 
     def _star_candidate_is_known(self, event: _BindingEvent, name: str) -> bool:
@@ -560,34 +582,37 @@ def _collect_facts(
                 )
             )
 
-    # Lexical global/nonlocal declarations apply to an entire scope.
+    # Lexical global/nonlocal declarations apply to an entire scope. Use the
+    # shared binding-owner policy against the original lexical name inventory:
+    # moving an event must not change another declaration's ownership decision.
+    local_names = {scope: frozenset(scope.events) for scope in scopes}
+
+    def originally_binds(scope: _Scope, name: str) -> bool:
+        return name in local_names[scope]
+
     for scope in scopes:
         for name in (*scope.globals, *scope.nonlocals):
             entries = scope.events.pop(name, ())
             if not entries:
                 continue
-            owner = roots[scope.module] if name in scope.globals else None
-            if owner is None:
-                parent = scope.parent
-                while parent is not None and parent.kind != "module":
-                    if parent.kind == "function" and name in parent.events:
-                        owner = parent
-                        break
-                    parent = parent.parent
-            if owner is not None:
-                owner.events.setdefault(name, []).extend(
-                    _BindingEvent(
-                        event.name,
-                        event.value,
-                        event.sequence,
-                        True,
-                        event.source,
-                        event.operation,
-                        event.declaration,
-                        event.repeatable,
-                    )
-                    for event in entries
+            owner = binding_owner(scope, name, roots[scope.module], originally_binds)
+            if owner is scope and name in scope.nonlocals:
+                # An unresolved nonlocal is not mapped to an invented owner.
+                scope.events[name] = entries
+                continue
+            owner.events.setdefault(name, []).extend(
+                _BindingEvent(
+                    event.name,
+                    event.value,
+                    event.sequence,
+                    True,
+                    event.source,
+                    event.operation,
+                    event.declaration,
+                    event.repeatable,
                 )
+                for event in entries
+            )
         # Other scopes remain independent, even if names have the same spelling.
     for scope in scopes:
         for entries in scope.events.values():

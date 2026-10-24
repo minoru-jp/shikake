@@ -17,6 +17,8 @@ from shikake.external import ExternalDefinitions
 
 from .ast_facts import SyntaxFacts, collect_syntax_facts
 from .base_references import BaseReference
+from .builtin_collections import BuiltinCollectionRecognition
+from .builtin_names import BUILTIN_NAMES
 from .external_structures import ExternalModelingError, _ExternalStructures
 from .import_policy import (
     ImportPolicy,
@@ -29,6 +31,7 @@ from .package import (
     OverrideCandidate,
     PackageModel,
     _analyze_package_facts,
+    _ModelIdentity,
     _module_identity,
     _package_paths,
     _selected_analyses,
@@ -42,7 +45,7 @@ from .parser import (
     _span,
     _validated_syntax_validation,
 )
-from .relation_facts import NameBinding, _collect_facts
+from .relation_facts import BindingState, NameBinding, _collect_facts
 
 IssueCategory = Literal["unsupported_syntax", "syntax_error", "external_definition"]
 
@@ -81,6 +84,47 @@ class SourceInspection:
     model: Model | None
     issues: tuple[InspectionIssue, ...]
     name_bindings: tuple[NameBinding, ...] = ()
+    _builtin_star_names: frozenset[str] = field(
+        default_factory=frozenset, repr=False, compare=False
+    )
+    _binding_index: dict[tuple[_ModelIdentity, str], tuple[NameBinding, ...]] | None = (
+        field(default=None, init=False, repr=False, compare=False)
+    )
+
+    def bindings_for(self, scope: Model, name: str) -> tuple[NameBinding, ...]:
+        """Query written facts for a Model owner or a virtual module built-in.
+
+        A generic definition Model may own both annotation and body lexical
+        scopes; distinguish the returned bindings by their scope_kind.
+        Incomplete inspection never asserts virtual binding facts.
+        """
+        if not self.complete:
+            return ()
+        index = self._binding_index
+        if index is None:
+            entries: dict[tuple[_ModelIdentity, str], list[NameBinding]] = {}
+            for fact in self.name_bindings:
+                entries.setdefault((_ModelIdentity(fact.scope), fact.name), []).append(
+                    fact
+                )
+            index = {key: tuple(value) for key, value in entries.items()}
+            object.__setattr__(self, "_binding_index", index)
+        written = index.get((_ModelIdentity(scope), name), ())
+        if written:
+            return written
+        if scope is self.model and name in BUILTIN_NAMES:
+            virtual = (
+                NameBinding(
+                    "<source>",
+                    scope,
+                    name,
+                    BindingState("builtin", name in self._builtin_star_names, False),
+                    "module",
+                ),
+            )
+            index[(_ModelIdentity(scope), name)] = virtual
+            return virtual
+        return ()
 
     def __repr__(self) -> str:
         """Summarize binding counts, but retain full diagnostic details."""
@@ -209,6 +253,7 @@ def _inspect_tree(
     external: _ExternalStructures | None = None,
     statement_models: dict[int, Model] | None = None,
     local_external_errors: dict[int, list[ExternalModelingError]] | None = None,
+    syntax: SyntaxFacts | None = None,
 ) -> SourceInspection:
     issues: list[InspectionIssue] = []
 
@@ -246,6 +291,12 @@ def _inspect_tree(
 
     builder = _Builder(
         index,
+        collections=BuiltinCollectionRecognition(
+            tree,
+            syntax
+            if syntax is not None
+            else collect_syntax_facts(tree, include_references=False),
+        ),
         on_unsupported=record,
         on_external=record_external,
         local_external_errors={
@@ -326,6 +377,7 @@ def inspect_source(
             external=matcher,
             statement_models=statement_models,
             local_external_errors=local_errors,
+            syntax=syntax,
         )
         # Do not expose a partial binding index as if it were complete. Reuse
         # the same lexical fact index as package analysis, with no relation pass.
@@ -336,7 +388,12 @@ def inspect_source(
             {"<source>": (syntax, statement_models)},
             definitions=frozenset(),
         )
-        return SourceInspection(result.model, result.issues, facts.bindings())
+        return SourceInspection(
+            result.model,
+            result.issues,
+            facts.bindings(),
+            frozenset(name for module, name in facts.builtin_star_conflicts()),
+        )
     except ExternalModelingError as error:
         return SourceInspection(None, (_external_issue(error, filename),))
 
@@ -405,6 +462,7 @@ def inspect_package(
                 external=matcher,
                 statement_models=statement_models,
                 local_external_errors=local_errors,
+                syntax=syntax,
             )
         except ExternalModelingError as error:
             issues.append(_external_issue(error, str(path)))
@@ -420,8 +478,11 @@ def inspect_package(
         name=folder.name,
         modules=tuple(module for module, _ in modules.values()),
     )
+    builtin_stars: set[tuple[str, str]] = set()
     candidates, bases, bindings = (
-        _analyze_package_facts(modules, selected, source_facts)
+        _analyze_package_facts(
+            modules, selected, source_facts, builtin_star_sink=builtin_stars
+        )
         if not issues
         else ((), (), ())
     )
@@ -432,6 +493,8 @@ def inspect_package(
             bases,
             selected if not issues else frozenset(),
             bindings,
+            _builtin_star_conflicts=frozenset(builtin_stars),
+            _complete=not issues,
         ),
         tuple(issues),
     )

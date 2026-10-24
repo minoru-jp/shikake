@@ -11,7 +11,7 @@ from shikumi_devdoc.norms.document import title
     heading="title",
 )
 class STATUS:
-    """{{project.name}} `{{project.version}}` は2026年10月24日付の公開バージョンとして記録します。本書は実装済み機能、制限、および確認済みのテスト実績を記録します。リリース別の変更内容は日本語CHANGELOG正本と英語 `CHANGELOG.md` に記録します。"""
+    """{{project.name}} `{{project.version}}` は2026年10月24日付の公開準備版として記録します。実際のPyPI・GitHub公開は別の手順であり、この記載は公開完了を保証しません。本書は実装済み機能、制限、および確認済みのテスト実績を記録します。リリース別の変更内容は日本語CHANGELOG正本と英語 `CHANGELOG.md` に記録します。"""
 
     class AVAILABLE:
         """- 配布名・公開import名は `shikake` です。内部実装は `shikake._mica` に置き、トップレベルの `mica` は配布しません。実行時のShikumi依存は `>=0.2.4,<2.0.0` です。
@@ -19,7 +19,7 @@ class STATUS:
         - Strict APIは `parse_source()` / `parse_package()`、診断付きのPartial APIは `inspect_source()` / `inspect_package()` です。 4つとも `syntax_validation="compile"` を既定とし、AST解析に加えてCPythonの実行しないコンパイル検証を行います。`"ast"` を指定するとコンパイル検証のみを省きます。コンパイル可能性は実行時の正しさの保証ではありません。 4つの解析APIはいずれも `import_policy` によって、従来どおりのimport、登録済みinterfaceの明示importだけ、または登録済み外部モジュールと `allowed_modules` に指定した任意の絶対モジュール名のimportを許可できます。制限モードでは相対・star importを拒否しますが、`from __future__ import annotations` の単独宣言は許可します。登録済みinterfaceの明示importは両制限モードで許可し、登録済みinterfaceの保護規則は維持します。import先の実在・実行時の同一性を検証せず、セキュリティ上の隔離機能ではありません。
         - Modelは `parts()`・`get(role)`・`get_scalar()`・`walk()` を提供し、`format_model_tree()` で上限付きの診断用構成木を表示できます。`analyses` により継承・オーバーライドの静的な候補照合を選択できます。既知の単一・多重継承グラフ上で確認できた同名メソッド候補を優先順位を付けずに提示し、個々の基底式に `BaseReference` を提供します。宣言・束縛をスコープごとに収集する共通インデックスを用い、入れ子のクラス定義も継承解析の対象にします。
         - 信頼できるShikumi記述体、または `ExternalDefinitionsBuilder` で構築した `ExternalDefinitions` を `definitions=` で渡し、明示的にimportされた外部インターフェースの呼び出しだけを登録Kind・StructureのModelにできます。外部宣言された構造・その子属性は直接呼び出す以外の値使用を拒否し、呼び出し**結果**に対する添字アクセス等は標準Modelとして維持します。`shikake.external` はShikumi宣言とPythonデータによるビルダーの両方式を公開し、動的な参照解決や実行は行いません。
-        - Python 3.12の `type` 文・ジェネリック宣言と、3.13の型パラメータ既定値、3.14のt-string（TemplateStr・Interpolation）をModel化できます。Python 3.14の括弧なしの複数例外指定は従来の例外処理と同じModelで扱います。 Python 3.15のPEP 798展開付き内包表記は構文としてModel化します。明示的lazy importは通常のimportと同じKind・Structureを用いて、文に `lazy` Featureを保持します。実行時の遅延ロード・初期化順序を評価せず、束縛3軸や静的参照候補の規則にも反映しません。内部のModel化処理は3.13までの基礎規則と3.14以降の差分規則に整理されています。検証実績は次節に記録します。CIはPython 3.11〜3.15を対象としています。現行の記述体には143 Kind、61 Structure、2 Featureがあります。具体的なKind・Structureの一覧は[LAYOUTS仕様正本ソース](../devdocs/canonical_sources/specification/layouts.py)を参照してください。"""
+        - Python 3.12の `type` 文・ジェネリック宣言と、3.13の型パラメータ既定値、3.14のt-string（TemplateStr・Interpolation）をModel化できます。Python 3.14の括弧なしの複数例外指定は従来の例外処理と同じModelで扱います。 Python 3.15のPEP 798展開付き内包表記は構文としてModel化します。明示的lazy importは通常のimportと同じKind・Structureを用いて、文に `lazy` Featureを保持します。実行時の遅延ロード・初期化順序を評価せず、束縛3軸や静的参照候補の規則にも反映しません。内部のModel化処理は3.13までの基礎規則と3.14以降の差分規則に整理されています。検証実績は次節に記録します。CIはPython 3.11〜3.15を対象としています。現行の記述体には143 Kind、62 Structure、2 Featureがあります。具体的なKind・Structureの一覧は[LAYOUTS仕様正本ソース](../devdocs/canonical_sources/specification/layouts.py)を参照してください。"""
 
         title @= "実装済みの範囲"
 
@@ -29,6 +29,14 @@ class STATUS:
         - Model起点の専用照会は追加しません。既存の `Model.span` がある場合、その `line`・`end_line` を行検索に渡して組み合わせられます。`span=None` ではこの方法は使えません。ソースの同一性、同一行の複数Modelの区別、コメントの意味的な所属は検証しません。パッケージ横断検索も提供せず、ソースごとに `collect_comments` を呼びます。関数・クラス本体の最初の文の `span.line` で真上のコメント（その文より前に同じ行のコードがない場合に限る）、デコレータ付き定義の直前は各デコレータを含めた最小開始行から、代入文の `span.end_line` で終了行の行末コメントを照会できますが、対象構文への所属を保証しません。複数行の構文内は `in_lines` を使います。コメント用APIを既存の解析APIに暗黙に組み込まないため、tokenizeのエラーは明示的な `collect_comments` 呼び出しでのみ発生します。新規の実行時依存はありません（tokenizeは標準ライブラリ）。ファイル入力ではtokenize.openでエンコーディング/BOMを処理し、同じ文字列を解析に渡します。構文解析できない入力へのtokenize挙動はPythonのバージョン間で保証しません。"""
 
         title @= "v0.0.2：独立コメントと行検索"
+
+    class BUILTIN_BINDINGS:
+        """- v0.0.3では、Python組み込み名（`tuple`・`list` など）を、各モジュール冒頭での仮想的な暗黙導入 `BindingState(introduction="builtin", may_rebind=False, may_delete=False)` として扱う。明示的なモジュール書き込みとstar importによる競合の可能性は `may_rebind`、削除は `may_delete` として評価する。字句的なローカル束縛は同一の組み込み束縛へ合成しない。
+        - パッケージのモジュールModelには `PackageModel.bindings_for(module, name)`、完全な単一ソースでは対応するモジュールModelに `SourceInspection.bindings_for(module, name)` を使用して必要時に取得できる。照会する暗黙の名前は `name_bindings` に含まれている必要がなく、`name_bindings` は引き続きソースに書かれた束縛を列挙する。これらの照会はスコープModelの同一性で照合し、実行時の名前解決は行わない。同じ定義Modelに注釈スコープと関数・クラス本体の字句スコープが対応する場合があり、返される `NameBinding.scope_kind` で区別する。利用者が作成した `NameBinding` はこの項目を省略でき、省略時は `None` となる。
+        - 標準組み込み名の集合はPythonのマイナーバージョンごとに固定し、`site` の追加名（`help`・`exit` など）や実行中の変更を含めない。Python 3.15では `frozendict`・`sentinel`・`ImportCycleError`・`__lazy_import__` を含む。固定集合は、`-S -I` で起動した素のCPythonの組み込み名とテストで照合する。組み込み名の動的な変更や対象バージョンの差し替えはModel化しない。CollectionのKindとStructureには破壊的変更があり、Featureは変わらない。
+        - Collectionは、Structure `collection_construction`（`construction`・`immutable`・`inputs`）を共有する `model.value.collection.sequence`・`.mapping`・`.set` へ正規化する。直接のリテラル入力は記述された要素・entryを保持し、認定した組み込み呼び出しは引数Modelを保持し、内包表記は内包節を持つ元のModelを `inputs` に保持する。generator式はCollectionに含めない。List/Tupleの束縛ターゲットは `model.structural_part.sequence_target` として別に表す。呼び出しは、組み込み名が可視の字句スコープで隠されたり書き込まれたりしておらず、コンストラクタ引数の構文が対応範囲内（位置引数0〜1個、`*` なし、キーワードは `dict`・`frozendict` のみ）の場合に限り正規化する。PEP 695の型パラメータは総称定義の本体、メソッドのスコープ、注釈、基底、型エイリアスの式から見え、デコレータや関数の既定値からは見えない。クラス直下の注釈スコープ（注釈スコープだけを経由した入れ子を含む）はクラスの局所名を参照できるが、通常のメソッド本体やネストしたクラス本体は参照できない。パッケージ全体で解決できたstar importでは、単一ファイルで保守的に判定するCollection正規化より精密な束縛3軸を報告することがある。内包表記のCollectionは既存の内包表記Modelを包むため、`walk()` で同じspanが現れ得る。これは意図した保守的な判定であり、実行時の型推論ではない。従来の具体的なCollection Kindとroleを使うコードは移行が必要である。"""
+
+        title @= "v0.0.3：組み込み名の3軸評価とCollection一般化"
 
     class PERFORMANCE:
         """- `Model` の構造的ハッシュはインスタンス内に遅延キャッシュされます。親Modelを初回ハッシュしたときに計算した子孫Modelのハッシュも保存し、後続の照会で再走査を減らします。ハッシュ値の算出規則と構造的等価性、非再帰的な計算は維持しています。
@@ -52,6 +60,8 @@ class STATUS:
         - v0.0.2の独立コメント検索とModel.spanの行番号合成を確認後、Python 3.13.5の開発環境で582件実行、572件成功・10件スキップを確認しました。この582件は開発途中の記録です。
         - v0.0.2の公開文書整備時、Python 3.13.5の開発環境で589件実行、579件成功・10件スキップを確認しました。
         - v0.0.2の最終レビュー後、別のレビュー環境でPython 3.11〜3.15の5バージョンすべてについて全テスト成功との報告を受けています。コメント関連の19件も各バージョンで成功し、Ruff check・format、BasedPyrightはエラー0件でした。英語READMEのコメント利用例4件と英語APIリファレンスの3件も正常動作が報告されています。これらはレビュー環境の報告であり、本書では実行ログを独立に確認していません。最終レビュー時のバージョン別総件数・スキップ数の内訳は未取得です。
+        - v0.0.3のレビュー修正後、Python 3.13.5の開発環境で628件実行、615件成功・13件スキップを確認しました。Ruff check・format、BasedPyrightもエラー0件でした。
+        - v0.0.3の公開候補について、別のレビュー環境でPython 3.11.17・3.12.3・3.13.17・3.14.6・3.15.0b4の5バージョンすべてで628件を実行し、失敗・エラーはないとの報告を受けています。スキップ数は順に55件・14件・13件・5件・0件です。Ruff check・format、BasedPyrightはエラー0件、sdistとwheelのビルドと `twine check --strict` も成功しました。展開したsdistでのPython 3.13.17の実行は628件中614件成功・14件スキップで、GitHubワークフローがsdistに含まれないための想定どおりのスキップ1件を含みます。Python 3.15は正式版ではなく3.15.0b4での結果です。これらはレビュー環境の報告であり、本書では実行ログを独立に確認していません。公開ワークフローがPython 3.11〜3.15を再検証します。
         - 上記の性能リファクタリング変更後のテストが対象のPython各バージョンでも成功したことは開発者が別環境で確認済みとの報告を受けています。これらの過去の実行の件数・スキップ数は未詳で、ログも本書では独立に確認していません。
         - 以前の548件のレビュー環境の報告についてはスキップ数の内訳が未取得ですが、最新のPython 3.15.0b4での570件の報告ではスキップ0件です。これらの報告はGitHub Actionsの実行結果とは区別します。CIマトリクスはPython 3.11〜3.15で、従来のPython 3.11〜3.13でも検証実績があります。"""
 
@@ -59,14 +69,14 @@ class STATUS:
 
     class RELEASE_AUTOMATION:
         """- 通常のpushとpull requestでは `.github/workflows/ci.yml` からテスト・静的検査を実行します。PyPIへの公開はpushでは起動せず、`.github/workflows/release.yml` の `workflow_dispatch` をリポジトリのデフォルトブランチで手動実行したときだけ開始します。
-        - 公開ワークフローはPython 3.11〜3.15の共通チェック、sdist検証、配布物のビルドとTwine検証を先に実行します。続いてGitHubの `pypi` EnvironmentとPyPI Trusted Publishingを使ってアップロードし、成功した場合に限り同じコミットへ `v<project.version>` タグを付けてGitHub Releaseを作成します。`0.0.1` のタグは `v0.0.1`、`0.0.2` のタグは `v0.0.2` です。
+        - 公開ワークフローはPython 3.11〜3.15の共通チェック、sdist検証、配布物のビルドとTwine検証を先に実行します。続いてGitHubの `pypi` EnvironmentとPyPI Trusted Publishingを使ってアップロードし、成功した場合に限り同じコミットへ `v<project.version>` タグを付けてGitHub Releaseを作成します。`0.0.1` のタグは `v0.0.1`、`0.0.2` のタグは `v0.0.2`、今回の公開予定タグは `v0.0.3` です。
         - GitHub Releaseにはビルドした配布物も添付します。タグがすでに存在するバージョンで新たな公開を開始することは拒否します。公開後のタグやReleaseの作成に失敗した際は、**元のワークフロー実行で失敗したジョブだけ**を再実行し、成功済みのPyPI公開ジョブを再実行しません。アップロード成否が不明な場合はPyPIの実際の公開状態を先に確認します。
         - PyPI側にはGitHubの所有者・リポジトリ・ワークフローファイル `release.yml`・Environment `pypi` に一致するTrusted Publisher設定が必要です。ここでの記載はワークフローの設定であり、外部サービスでのリリース成功を示すものではありません。"""
 
         title @= "初回リリースのCIとPyPI・GitHub公開手順"
 
     class BINDING_FACTS:
-        """- `PackageModel.base_references` / `bases_for(class_model)` は、基底式ごとに `BaseReference(subject, expression, targets, binding, attribute_modified)` を公開する。`targets` は発見済みのクラス候補、`binding` は根の識別子の `BindingState(introduction, may_rebind, may_delete)` または `None`、`attribute_modified` は同じモジュールの明示的な属性変更を示す。
+        """- `PackageModel.base_references` / `bases_for(class_model)` は、基底式ごとに `BaseReference(subject, expression, targets, binding, attribute_modified)` を公開する。`targets` は発見済みのクラス候補、`binding` は根の識別子の `BindingState(introduction, may_rebind, may_delete)` または `None`、`attribute_modified` は同じモジュールの明示的な属性変更を示す。根の識別子が標準組み込み名で、内側の可視スコープに同名の束縛がない場合、`binding` はモジュールでの組み込み名の3軸となる（例：同名の書き込みがない `class AppError(Exception)` では `BindingState("builtin", False, False)`）。
         - `PackageModel.name_bindings` / `bindings_for(scope, name)` からスコープごとの束縛3軸を取得でき、`analyses=set()` でも利用できる。完全な単一ソースの `inspect_source()` からも `SourceInspection.name_bindings` を取得でき、不完全なPartial結果では空になる。これらはFeatureではない。初回の構文上の導入、追加・反復し得る書き込み、削除を区別するが、実行順序・分岐の成立・読み取り時点の確定代入は判定しない。
         - 継承全体に確定性のstatusは付けず、基底参照ごとの事実とオーバーライド候補を独立して提供する。候補は実行時の正しさを証明せず、利用側が採否を判断する。共通のAST事実収集器を継承解析と外部構造の制約検証で共有する。"""
 

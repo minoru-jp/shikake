@@ -15,7 +15,7 @@ class PackageSmokeTest(unittest.TestCase):
             )
         )["project"]
         self.assertEqual(shikake.__version__, project["version"])
-        self.assertEqual(shikake.__version__, "0.0.2")
+        self.assertEqual(shikake.__version__, "0.0.3")
 
 
 if __name__ == "__main__":

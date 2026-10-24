@@ -49,7 +49,7 @@ class ModelDiagnosticReprTests(unittest.TestCase):
         text = repr(root)
         self.assertLessEqual(len(text), 512)
         sequence = next(
-            m for m in root.walk() if m.kind.id == "model.value.collection.list"
+            m for m in root.walk() if m.kind.id == "model.value.collection.sequence"
         )
         self.assertIn("1300 items", repr(sequence))
         self.assertLessEqual(len(repr(sequence)), 512)

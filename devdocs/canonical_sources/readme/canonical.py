@@ -39,14 +39,25 @@ class README:
 
             title @= "Modelの構造"
 
+        class COLLECTIONS:
+            """CollectionはSequence・Mapping・Setの3つの具体Kind（`model.value.collection.sequence`・`.mapping`・`.set`）で表し、共通の `construction`（literal・builtin・comprehension）、`immutable`（bool）、`inputs`（構築用の子Model列）をStructureの役割として提供します。Featureは増やしません。
+
+            `[1, 2]` と `list(xs)` は共にSequenceですが、`construction` の値と入力Modelが異なります。`(1, 2)` と `tuple(xs)` はさらに `immutable=True` を保持します。`dict`・`frozendict`（3.15+）はMapping、`set`・`frozenset`はSetとして扱います。
+
+            標準組み込み名の一覧はPythonのマイナーバージョンごとに固定しており、`site` の追加名や実行中の `builtins` の変更には左右されません。組み込みコンストラクタ呼び出しは、記述された引数の形が対応範囲内の場合に限りCollectionへ正規化します。`list`・`tuple`・`set`・`frozenset` は位置引数0〜1個でキーワード引数と `*` 引数なし、`dict`・`frozendict` は位置引数0〜1個とキーワード引数（`**` を含む）を受け付け、`*` 引数は受け付けません。対応しない形や不確かな形は、実行時の引数検証をせずにCallのまま残します。さらに、その名前が可視の字句スコープで変更されていない暗黙の組み込み名である場合に**限り**正規化します。PEP 695の型パラメータはPythonが可視とするスコープで組み込み名を隠します。クラス直下の注釈スコープからはそのクラスの名前も見えますが、通常のメソッド本体やネストしたクラス本体からは見えません。隠されている名前や上書きされ得る名前は通常のCallのままです。これは静的で保守的な分類であり、評価や実行時の型推論ではありません。
+
+            `inputs` は `construction="literal"` では直接の要素・辞書entry、`"builtin"` では記述された引数Model、`"comprehension"` では内包節を持つ元の内包表記Model1個を保持します。そのため `walk()` では同じソース範囲を持つ値Modelが2つ現れることがあります。generator式は変わりません。分解代入のTuple/ListはCollectionではなく、値とは別のターゲットModelで表します。これはv0.0.2に対する公開Kind・Structure契約の破壊的変更です。詳細はAPIリファレンスを参照してください。"""
+
+            title @= "コレクションの一般化（v0.0.3）"
+
         class BINDINGS:
             """識別子の束縛について、次の性質を独立して表します。
 
-            - `introduction`：導入が構文上明快か（`stable` / `unstable`）。
+            - `introduction`：明示的な導入の安定性（`stable` / `unstable`）、または組み込み名の暗黙導入（`builtin`）。
             - `may_rebind`：最初の導入とは別の書き込み、または反復・増分代入等による再束縛の可能性があるか。
             - `may_delete`：削除の可能性があるか。
 
-            `x = 1` だけなら `may_rebind=False`、続けて `x = 2` があればTrueです。`n += 1` だけでは安定した導入とみなされません。これらは構文上の情報であり、実行結果やコードの品質、読み取り時点の確定代入を評価するものではありません。"""
+            `x = 1` だけなら `may_rebind=False`、続けて `x = 2` があればTrueです。`n += 1` だけでは安定した導入とみなされません。組み込み名（例：`tuple`）はモジュール冒頭で暗黙に導入されたものとみなし、モジュールで同名への書き込みがあれば `may_rebind=True` です。モジュールModelの `PackageModel.bindings_for()` または完全な `SourceInspection.bindings_for()` で必要時に取得でき、読み取り専用の組み込み名を `name_bindings` へ大量展開しません。総称定義の型パラメータ用の注釈スコープと関数・クラス本体は同じ所有Modelを共有する場合があり、それ以外は同一になる束縛レコードを `NameBinding.scope_kind` で区別します。標準組み込み名の一覧は解析に用いるPythonのマイナーバージョンごとに固定しており、実行中の `builtins` 名前空間やsiteの追加名には左右されません。これらは構文上の情報であり、実行結果やコードの品質、読み取り時点の確定代入を評価するものではありません。"""
 
             title @= "束縛の3軸"
 

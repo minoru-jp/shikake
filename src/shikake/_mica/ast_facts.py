@@ -14,7 +14,7 @@ from typing import Literal
 
 @dataclass(slots=True, eq=False)
 class SyntaxScope:
-    kind: Literal["module", "class", "function"]
+    kind: Literal["module", "class", "function", "annotation"]
     node: ast.AST
     parent: SyntaxScope | None
     globals: set[str] = field(default_factory=set)
@@ -63,6 +63,81 @@ class SyntaxFacts:
     # written attribute chain. Also includes Store and Del occurrences.
     references: tuple[tuple[ast.Name | ast.Attribute, ast.AST | None], ...]
     special_bindings: tuple[tuple[str, ast.AST], ...]
+    # A generic declaration has two nested lexical scopes: type parameters
+    # are visible across its body and headers, but ordinary class locals are
+    # not inherited by methods. A type alias has only the annotation scope.
+    annotation_scopes: dict[ast.AST, SyntaxScope] = field(default_factory=dict)
+
+    def expression_scopes(
+        self, tree: ast.Module
+    ) -> tuple[dict[ast.AST, SyntaxScope], dict[ast.AST, ast.AST]]:
+        """Map expression nodes to the lexically visible scope, once.
+
+        Definition decorators/default values remain in the enclosing scope;
+        generic bases, type-alias values and annotations see type parameters.
+        This table is shared by all AST-based expression consumers.
+        """
+        scopes = {
+            item.node: item
+            for item in self.scopes
+            if item.kind in {"class", "function"}
+        }
+        result: dict[ast.AST, SyntaxScope] = {}
+        parents: dict[ast.AST, ast.AST] = {}
+        pending: list[tuple[ast.AST, SyntaxScope, SyntaxScope | None]] = [
+            (tree, self.root, None)
+        ]
+        while pending:
+            node, scope, header_annotation = pending.pop()
+            result[node] = scope
+            body_scope = scopes.get(node)
+            own_annotation = self.annotation_scopes.get(node)
+            for name, value in ast.iter_fields(node):
+                children = (
+                    (value,)
+                    if isinstance(value, ast.AST)
+                    else value
+                    if isinstance(value, list)
+                    else ()
+                )
+                for child in children:
+                    if not isinstance(child, ast.AST):
+                        continue
+                    parents[child] = node
+                    child_scope = scope
+                    next_annotation = header_annotation
+                    if body_scope is not None:
+                        next_annotation = own_annotation
+                        if name == "body":
+                            child_scope = body_scope
+                            next_annotation = None
+                        elif own_annotation is not None and (
+                            name == "type_params"
+                            or (
+                                isinstance(node, ast.ClassDef)
+                                and name in {"bases", "keywords"}
+                            )
+                            or (
+                                isinstance(
+                                    node, (ast.FunctionDef, ast.AsyncFunctionDef)
+                                )
+                                and name == "returns"
+                            )
+                        ):
+                            child_scope = own_annotation
+                    elif own_annotation is not None:
+                        next_annotation = own_annotation
+                        if name in {"value", "type_params"}:
+                            child_scope = own_annotation
+                    elif (
+                        isinstance(node, ast.arg)
+                        and name == "annotation"
+                        and header_annotation is not None
+                    ):
+                        child_scope = header_annotation
+                    pending.append((child, child_scope, next_annotation))
+        return result, parents
+
     # All bound parameter / pattern / type parameter names are operations,
     # including syntactic constructs without an ast.Name(Store) child.
 
@@ -385,6 +460,7 @@ def collect_syntax_facts(
     definitions: list[SyntaxDefinition] = []
     references: list[tuple[ast.Name | ast.Attribute, ast.AST | None]] = []
     special_bindings: list[tuple[str, ast.AST]] = []
+    annotation_scopes: dict[ast.AST, SyntaxScope] = {}
 
     # The occurrence table is needed by external-structure validation only.
     # Relationship analysis does not construct this unused table.
@@ -550,11 +626,38 @@ def collect_syntax_facts(
                         or isinstance(stmt, (ast.For, ast.AsyncFor, ast.While)),
                     )
                 )
-        if isinstance(stmt, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+        is_declaration = isinstance(
+            stmt, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        )
+        # Annotation scopes are a lexical overlay enclosing the *body* scope.
+        # The type-alias expression also evaluates in its own annotation scope.
+        parameters = tuple(
+            (name, parameter)
+            for parameter in getattr(stmt, "type_params", ())
+            if isinstance(name := getattr(parameter, "name", None), str)
+        )
+        annotation_scope = None
+        if parameters:
+            annotation_scope = SyntaxScope("annotation", stmt, frame.scope)
+            scopes.append(annotation_scope)
+            annotation_scopes[stmt] = annotation_scope
+            for name, parameter in parameters:
+                events.append(
+                    SyntaxEvent(
+                        name,
+                        "parameter",
+                        parameter,
+                        stmt,
+                        annotation_scope,
+                        sequence,
+                        False,
+                    )
+                )
+        if is_declaration:
             child_scope = SyntaxScope(
                 "class" if isinstance(stmt, ast.ClassDef) else "function",
                 stmt,
-                frame.scope,
+                annotation_scope or frame.scope,
             )
             scopes.append(child_scope)
             branch_scope = child_scope
@@ -564,24 +667,15 @@ def collect_syntax_facts(
             branch_conditional = True
         blocks = _child_blocks(stmt)
         for body, captures in reversed(blocks):
-            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                # Type parameters are lexical bindings within the declaration,
-                # not names inherited from its enclosing module/class scope.
-                parameters = tuple(
-                    (name, parameter)
-                    for parameter in getattr(stmt, "type_params", ())
-                    if isinstance(name := getattr(parameter, "name", None), str)
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                args = stmt.args
+                captures = (
+                    *captures,
+                    *((arg.arg, arg) for arg in args.posonlyargs),
+                    *((arg.arg, arg) for arg in args.args),
+                    *((arg.arg, arg) for arg in args.kwonlyargs),
+                    *((arg.arg, arg) for arg in (args.vararg, args.kwarg) if arg),
                 )
-                captures = (*parameters, *captures)
-                if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    args = stmt.args
-                    captures = (
-                        *captures,
-                        *((arg.arg, arg) for arg in args.posonlyargs),
-                        *((arg.arg, arg) for arg in args.args),
-                        *((arg.arg, arg) for arg in args.kwonlyargs),
-                        *((arg.arg, arg) for arg in (args.vararg, args.kwarg) if arg),
-                    )
             frames.append(
                 _Frame(
                     body,
@@ -616,4 +710,5 @@ def collect_syntax_facts(
         tuple(definitions),
         tuple(references),
         tuple(special_bindings),
+        annotation_scopes,
     )

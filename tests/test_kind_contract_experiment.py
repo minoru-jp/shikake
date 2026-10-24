@@ -22,7 +22,7 @@ class IndependentStructureTests(unittest.TestCase):
     def test_sharing_does_not_imply_ancestry(self) -> None:
         index = kind_index()
         self.assertEqual(len(index.all_kinds()), 143)
-        self.assertEqual(len(index.all_structures()), 61)
+        self.assertEqual(len(index.all_structures()), 62)
         add = index.require_structure("model.value.operation.addition")
         equal = index.require_structure("model.value.operation.comparison.equal")
         self.assertIs(add, equal)
@@ -158,7 +158,7 @@ class IndependentStructureTests(unittest.TestCase):
         self.assertTrue(realizer.check(result.view).is_realizable)
         index = realizer.realize(result.view)
         self.assertEqual(len(index.all_kinds()), 143)
-        self.assertEqual(len(index.all_structures()), 61)
+        self.assertEqual(len(index.all_structures()), 62)
         self.assertEqual(len(index.all_features()), 2)
 
 

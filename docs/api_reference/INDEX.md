@@ -71,6 +71,7 @@ Usage topics: [Relationship analysis selection](public.md#relationship-analysis-
 - [API_061: `shikake.SourceComments.module_header`](public.md#api_061-shikakesourcecommentsmodule_header)
 - [API_062: `shikake.SourceComments.module_footer`](public.md#api_062-shikakesourcecommentsmodule_footer)
 - [API_063: `shikake.SourceComments.comments`](public.md#api_063-shikakesourcecommentscomments)
+- [API_064: `shikake.SourceInspection.bindings_for`](public.md#api_064-shikakesourceinspectionbindings_for)
 
 ## External Definitions API
 

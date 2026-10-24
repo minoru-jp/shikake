@@ -256,7 +256,7 @@ class LAYOUTS:
         level @= MUST
         related @= (MODEL.SPEC_004, MODEL.SPEC_005)
         detail @= "roles: elements:nodes"
-        detail @= "kinds: model.pattern.sequence, model.value.collection.tuple, model.value.collection.list, model.value.collection.set"
+        detail @= "kinds: model.pattern.sequence"
 
     class SPEC_027:
         """Structure `ordered_targets` のrole/shapeを記述順に保持する。"""
@@ -520,13 +520,13 @@ class LAYOUTS:
         detail @= "kinds: model.value.access.index"
 
     class SPEC_056:
-        """Structure `value_collection_dict` のrole/shapeを記述順に保持する。"""
+        """Collectionの共通構築情報と入力Model列を保持する。"""
 
-        title @= "Structure: value_collection_dict"
+        title @= "Structure: collection_construction"
         level @= MUST
         related @= (MODEL.SPEC_004, MODEL.SPEC_005)
-        detail @= "roles: entries:nodes"
-        detail @= "kinds: model.value.collection.dict"
+        detail @= "roles: construction:scalar, immutable:scalar, inputs:nodes"
+        detail @= "kinds: model.value.collection.sequence, model.value.collection.mapping, model.value.collection.set"
 
     class SPEC_057:
         """Structure `value_comprehension_dict` のrole/shapeを記述順に保持する。"""
@@ -580,3 +580,12 @@ class LAYOUTS:
         related @= (MODEL.SPEC_004, MODEL.SPEC_005)
         detail @= "roles: mapping:node, clauses:nodes"
         detail @= "kinds: model.value.comprehension.dict.unpacking"
+
+    class SPEC_063:
+        """代入先のTuple/Listは構築式ではなく専用のターゲット形状で表す。"""
+
+        title @= "Structure: target_sequence"
+        level @= MUST
+        related @= (MODEL.SPEC_004, MODEL.SPEC_005)
+        detail @= "roles: spelling:scalar, elements:nodes"
+        detail @= "kinds: model.structural_part.sequence_target"

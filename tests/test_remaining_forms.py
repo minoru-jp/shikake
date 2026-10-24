@@ -31,7 +31,7 @@ class RemainingFormsTests(unittest.TestCase):
     def test_kind_and_structure_separation(self) -> None:
         index = shikake.kind_index()
         self.assertEqual(len(index.all_kinds()), 143)
-        self.assertEqual(len(index.all_structures()), 61)
+        self.assertEqual(len(index.all_structures()), 62)
         self.assertEqual(len(index.all_features()), 2)
         self.assertTrue(
             index.is_a(
@@ -128,7 +128,7 @@ class RemainingFormsTests(unittest.TestCase):
             [
                 "model.value.access.index",
                 "model.value.access.attribute",
-                "model.value.collection.tuple",
+                "model.structural_part.sequence_target",
             ],
         )
         self.assertEqual(

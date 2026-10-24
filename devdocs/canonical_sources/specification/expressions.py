@@ -138,7 +138,7 @@ class EXPRESSIONS:
         detail @= "AST: ast.Slice -> model.value.slice"
 
     class SPEC_017:
-        "値式のリスト・タプル・集合・辞書はそれぞれ固有のKindと宣言順の要素を持つ。辞書の `**` はkeyが省略されたentryで表す。"
+        "値式のリスト・タプルはSequence、辞書はMapping、集合はSetとして正規化する。構築方式・不変性・入力列を保持し、辞書の `**` はkey省略のentryで表す。"
 
         title @= "コレクション"
         level @= MUST
@@ -148,10 +148,10 @@ class EXPRESSIONS:
             LAYOUTS.SPEC_046,
             LAYOUTS.SPEC_056,
         )
-        detail @= "AST: ast.Tuple [value] -> model.value.collection.tuple"
-        detail @= "AST: ast.List [value] -> model.value.collection.list"
+        detail @= "AST: ast.Tuple [value] -> model.value.collection.sequence"
+        detail @= "AST: ast.List [value] -> model.value.collection.sequence"
         detail @= "AST: ast.Set -> model.value.collection.set"
-        detail @= "AST: ast.Dict -> model.value.collection.dict"
+        detail @= "AST: ast.Dict -> model.value.collection.mapping"
         detail @= "AST: ast.Dict [entry] -> model.structural_part.dictionary_entry"
 
     class SPEC_018:
@@ -274,7 +274,7 @@ class EXPRESSIONS:
         detail @= "AST: ast.FormattedValue -> model.structural_part.formatted_field"
 
     class SPEC_025:
-        "内包表記の種別を独立したKindで保持し、節の反復元・フィルタ・非同期Featureを個別にModel化する。"
+        "リスト・集合・辞書の内包表記は対応するCollectionのconstruction=comprehensionとし、既存の内包表記Modelをinputsの唯一の子として保持する。generator式は従来の独立Kindとする。反復元・フィルタ・非同期Featureは子Modelで保持する。"
 
         title @= "4種の内包表記"
         level @= MUST
@@ -284,9 +284,9 @@ class EXPRESSIONS:
             LAYOUTS.SPEC_010,
             LAYOUTS.SPEC_057,
         )
-        detail @= "AST: ast.ListComp -> model.value.comprehension.list"
-        detail @= "AST: ast.SetComp -> model.value.comprehension.set"
-        detail @= "AST: ast.DictComp -> model.value.comprehension.dict"
+        detail @= "AST: ast.ListComp -> model.value.collection.sequence"
+        detail @= "AST: ast.SetComp -> model.value.collection.set"
+        detail @= "AST: ast.DictComp -> model.value.collection.mapping"
         detail @= "AST: ast.GeneratorExp -> model.value.comprehension.generator"
         detail @= "AST: ast.comprehension -> model.structural_part.comprehension_clause"
 
@@ -301,15 +301,15 @@ class EXPRESSIONS:
         detail @= "AST: ast.YieldFrom -> model.value.yield_from"
 
     class SPEC_027:
-        "値位置の星付き展開とターゲット位置の星付き要素を区別する。Tuple/ListターゲットはコレクションKindを再利用しても値を束縛したと確定しない。"
+        "値位置の星付き展開とターゲット位置の星付き要素を区別する。Tuple/Listターゲットは値のCollection構築とは分離して専用のターゲットKindで保持する。"
 
         title @= "展開と代入先"
         level @= MUST
         related @= (MODEL.SPEC_005, LAYOUTS.SPEC_015, LAYOUTS.SPEC_026)
         detail @= "AST: ast.Starred [value] -> model.value.starred_expansion"
         detail @= "AST: ast.Starred [target] -> model.structural_part.starred_target"
-        detail @= "AST: ast.Tuple [target] -> model.value.collection.tuple"
-        detail @= "AST: ast.List [target] -> model.value.collection.list"
+        detail @= "AST: ast.Tuple [target] -> model.structural_part.sequence_target"
+        detail @= "AST: ast.List [target] -> model.structural_part.sequence_target"
 
     class SPEC_028:
         "パラメータは定義・lambda双方の共通の独立した構造要素とする。パラメータの既定値・注釈を式として保持する。"
@@ -338,16 +338,23 @@ class EXPRESSIONS:
         )
 
     class SPEC_031:
-        """Python 3.15（PEP 798）で導入された展開付き内包表記を構文としてModel化する。`ast.ListComp`・`ast.SetComp`・`ast.GeneratorExp` の直接の `elt` が `ast.Starred` の場合、既存の内包表記Kindと `model.value.starred_expansion` を組み合わせ、要素の展開を保持する。通常のコレクション要素内にある `Starred` はこの条件と区別する。`ast.DictComp.value is None` の場合、`key` が展開対象の式であることを保持し、専用Kind `model.value.comprehension.dict.unpacking` の `mapping: node`・`clauses: nodes` へ対応付ける。通常の辞書内包表記の `key`・`value`・`clauses` は変更しない。値や展開結果の評価、ループへの書き換えは行わない。3.15より前のCPythonでこの記法を構文解析できるとは保証しない。"""
+        """Python 3.15（PEP 798）で導入された展開付き内包表記を構文としてModel化する。`ast.ListComp`・`ast.SetComp`・`ast.GeneratorExp` の直接の `elt` が `ast.Starred` の場合、Collectionの外側Kindと内側の既存内包表記Kind・`model.value.starred_expansion` を組み合わせ、要素の展開を保持する。通常のコレクション要素内にある `Starred` はこの条件と区別する。`ast.DictComp.value is None` の場合、`key` が展開対象の式であることを保持し、専用Kind `model.value.comprehension.dict.unpacking` の `mapping: node`・`clauses: nodes` へ対応付ける。内側の通常辞書内包表記の `key`・`value`・`clauses` は変更しない。値や展開結果の評価、ループへの書き換えは行わない。3.15より前のCPythonでこの記法を構文解析できるとは保証しない。"""
 
         title @= "Python 3.15の展開付き内包表記（PEP 798）"
         level @= MUST
         related @= (LAYOUTS.SPEC_010, LAYOUTS.SPEC_057, LAYOUTS.SPEC_062)
         detail @= (
-            "AST: ast.ListComp [elt is ast.Starred] -> model.value.comprehension.list"
+            "AST: ast.ListComp [elt is ast.Starred] -> model.value.collection.sequence"
         )
-        detail @= (
-            "AST: ast.SetComp [elt is ast.Starred] -> model.value.comprehension.set"
-        )
+        detail @= "AST: ast.SetComp [elt is ast.Starred] -> model.value.collection.set"
         detail @= "AST: ast.GeneratorExp [elt is ast.Starred] -> model.value.comprehension.generator"
-        detail @= "AST: ast.DictComp [value is None] -> model.value.comprehension.dict.unpacking"
+        detail @= "AST: ast.DictComp [value is None] -> model.value.collection.mapping"
+
+    class SPEC_032:
+        """Collectionの具体Kindはsequence・mapping・setの3系統とし、共通Structureで `construction`（literal/builtin/comprehension）、`immutable`（bool）、`inputs`（nodes）を保持する。list/tuple・dict/frozendict・set/frozensetは対応する共通Kindを使う。構文上の要素と組み込み呼び出しの引数はどちらも入力だが結果要素として推論せず、直接要素・辞書entry・starred展開・keyword引数の子Modelを区別して保持する。リテラルと組み込み呼び出し、変更可能性はscalarの差として構造的等価性へ反映する。Featureを増やさない。
+
+        組み込みコンストラクタ呼び出しへの一般化は、呼び出し元が直接のNameであり、Pythonバージョン別に固定された標準組み込み名かつ可視スコープ内に明示的な同名束縛・削除・star import等の不安定要因がないときだけ行う。名前解決や型推論・実行結果の確定はしない。動的な組み込み名前空間変更は追跡せず、疑わしい呼び出しは通常Callとして保持する。frozendictはPython 3.15以降を対象とする。コンストラクタの構文条件も保守的に評価する。`list`・`tuple`・`set`・`frozenset` は位置引数0〜1個、キーワード引数なし、`*`引数なしに限定する。`dict`・`frozendict` は位置引数0〜1個とキーワード引数（`**`を含む）を許容し、`*`引数は許容しない。適合しない呼び出しは通常Callへ戻す。これは引数値の型や実行時の成功を証明するものではない。型パラメータ専用の注釈スコープはクラス本体から独立し、メソッドや定義ヘッダーの所定箇所から可視となる（デコレータ・関数デフォルト引数からは不可視）。クラス直下または注釈スコープだけを経由した位置の注釈スコープからは外側クラスの名前を参照できるが、通常の関数本体やネストしたクラス本体を経由すると見えない。この可視性は共通の字句スコープ判定で扱い、Collection固有に再実装しない。star importがあり、パッケージ全体の束縛解析では競合なしと評価できた場合でも、単一モジュールのCollection正規化は保守的にCallのまま保持できる。`inputs` はliteralでは直接要素または辞書entry、builtinでは引数Model、comprehensionでは元の内包表記Model1個を保持し、外側Collectionと内側内包表記のspanが重複してもよい。Tuple/Listの束縛ターゲットは `model.structural_part.sequence_target` の `spelling` / `elements` で区別し、Collection構築とは扱わない。"""
+
+        title @= "Collection構築の一般化と保守的な組み込み名の判定"
+        level @= MUST
+        related @= (MODEL.SPEC_005, MODEL.SPEC_015, LAYOUTS.SPEC_056, LAYOUTS.SPEC_063)

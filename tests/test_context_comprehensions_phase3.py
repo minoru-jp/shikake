@@ -54,7 +54,7 @@ class ContextComprehensionTests(unittest.TestCase):
             ["manager", "monitor", "other"],
         )
         target = child(entries[0], "target")
-        self.assertEqual(target.kind.id, "model.value.collection.tuple")
+        self.assertEqual(target.kind.id, "model.structural_part.sequence_target")
         self.assertEqual(
             nodes(target, "elements")[1].kind.id, "model.structural_part.starred_target"
         )
@@ -75,6 +75,15 @@ class ContextComprehensionTests(unittest.TestCase):
         for source, suffix, roles in forms:
             with self.subTest(source=source):
                 model = expression(source)
+                if suffix != "generator":
+                    category = {"list": "sequence", "set": "set", "dict": "mapping"}[
+                        suffix
+                    ]
+                    self.assertEqual(
+                        model.kind.id, f"model.value.collection.{category}"
+                    )
+                    self.assertEqual(model.get("construction"), "comprehension")
+                    (model,) = nodes(model, "inputs")
                 self.assertEqual(model.kind.id, f"model.value.comprehension.{suffix}")
                 self.assertTrue(
                     shikake.kind_index().is_a(
@@ -101,10 +110,11 @@ class ContextComprehensionTests(unittest.TestCase):
     def test_nested_clauses_filters_binding_and_construction_are_separate(self) -> None:
         source = "[(name, value) for name, items in groups if items for value in items if value > 0 if value < 100]"
         construction = expression(source)
-        self.assertEqual(construction.kind.id, "model.value.comprehension.list")
-        element = child(construction, "element")
-        self.assertEqual(element.kind.id, "model.value.collection.tuple")
-        clauses = nodes(construction, "clauses")
+        self.assertEqual(construction.kind.id, "model.value.collection.sequence")
+        (construction_body,) = nodes(construction, "inputs")
+        element = child(construction_body, "element")
+        self.assertEqual(element.kind.id, "model.value.collection.sequence")
+        clauses = nodes(construction_body, "clauses")
         self.assertEqual(len(clauses), 2)
         self.assertEqual(
             [e.get("name") for e in nodes(child(clauses[0], "target"), "elements")],
@@ -137,19 +147,23 @@ class ContextComprehensionTests(unittest.TestCase):
             for clause in clauses
         ]
         self.assertEqual(
-            plan, [("model.value.collection.tuple", 1), ("model.value.named", 2)]
+            plan,
+            [("model.structural_part.sequence_target", 1), ("model.value.named", 2)],
         )
 
     def test_nested_constructions_keep_dict_key_value_and_original_order(self) -> None:
         model = expression("{name: [x for x in xs if x] for name, xs in groups if xs}")
-        self.assertEqual(child(model, "key").get("name"), "name")
-        inner = child(model, "value")
-        self.assertEqual(inner.kind.id, "model.value.comprehension.list")
-        self.assertEqual(len(nodes(model, "clauses")), 1)
-        self.assertEqual(len(nodes(inner, "clauses")), 1)
-        self.assertEqual(len(nodes(nodes(model, "clauses")[0], "filters")), 1)
+        self.assertEqual(model.kind.id, "model.value.collection.mapping")
+        (model_body,) = nodes(model, "inputs")
+        self.assertEqual(child(model_body, "key").get("name"), "name")
+        inner = child(model_body, "value")
+        self.assertEqual(inner.kind.id, "model.value.collection.sequence")
+        (inner_body,) = nodes(inner, "inputs")
+        self.assertEqual(len(nodes(model_body, "clauses")), 1)
+        self.assertEqual(len(nodes(inner_body, "clauses")), 1)
+        self.assertEqual(len(nodes(nodes(model_body, "clauses")[0], "filters")), 1)
         self.assertEqual(
-            [part.role for part in nodes(model, "clauses")[0].parts()],
+            [part.role for part in nodes(model_body, "clauses")[0].parts()],
             ["target", "iterable", "filters", "is_async"],
         )
 
@@ -179,7 +193,7 @@ class ContextComprehensionTests(unittest.TestCase):
         self.assertEqual(len(nodes(inspected.model, "body")), 2)
         self.assertEqual(
             [child(node, "value").kind.id for node in nodes(inspected.model, "body")],
-            ["model.value.comprehension.list", "model.value.comprehension.set"],
+            ["model.value.collection.sequence", "model.value.collection.set"],
         )
 
     def test_async_and_ignored_with_type_comment(self) -> None:
@@ -195,7 +209,7 @@ class ContextComprehensionTests(unittest.TestCase):
         self.assertEqual(context.features, ("async",))
         result = nodes(child(context, "body"), "statements")[0]
         comprehension = child(result, "value")
-        clause = nodes(comprehension, "clauses")[0]
+        clause = nodes(nodes(comprehension, "inputs")[0], "clauses")[0]
         self.assertEqual(clause.features, ("async",))
         self.assertIs(clause.get("is_async"), True)
         (context,) = nodes(

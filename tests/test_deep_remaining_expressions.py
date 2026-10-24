@@ -37,7 +37,7 @@ class DeepRemainingExpressionsTests(unittest.TestCase):
         builder = _Builder(kind_index())
         modeled = builder.expression(expression)
         kinds = [item.kind.id for item in modeled.walk()]
-        self.assertEqual(kinds[0], "model.value.collection.dict")
+        self.assertEqual(kinds[0], "model.value.collection.mapping")
         self.assertEqual(kinds[-1], "model.value.named")
         self.assertIn("model.structural_part.dictionary_entry", kinds)
         self.assertEqual(modeled, builder.expression(expression))

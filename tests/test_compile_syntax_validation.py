@@ -160,9 +160,11 @@ class CompileSyntaxValidationTests(unittest.TestCase):
         assignment.value.value = cast(Any, None)
         result = _Builder(shikake.kind_index()).module(module)
         expression = result.get_nodes("body")[0].get_node("value")
-        self.assertEqual(expression.kind.id, "model.value.comprehension.dict.unpacking")
-        self.assertEqual(expression.get_node("mapping").get("name"), "k")
-        self.assertEqual(len(expression.get_nodes("clauses")), 1)
+        self.assertEqual(expression.kind.id, "model.value.collection.mapping")
+        (detail,) = expression.get_nodes("inputs")
+        self.assertEqual(detail.kind.id, "model.value.comprehension.dict.unpacking")
+        self.assertEqual(detail.get_node("mapping").get("name"), "k")
+        self.assertEqual(len(detail.get_nodes("clauses")), 1)
 
 
 if __name__ == "__main__":

@@ -50,7 +50,7 @@ class ValueExpressionTests(unittest.TestCase):
             tuple(part.value for part in empty.parts()), (None, None, None)
         )
         mixed = value("items[1:3, :, ...]")
-        dimensions = many(one(mixed, "index"), "elements")
+        dimensions = many(one(mixed, "index"), "inputs")
         self.assertEqual(
             [item.kind.id for item in dimensions],
             [
@@ -127,18 +127,18 @@ class ValueExpressionTests(unittest.TestCase):
         model = value("{code, 'ready', (1, 2)}")
         self.assertEqual(model.kind.id, "model.value.collection.set")
         self.assertEqual(
-            [part.kind.id for part in many(model, "elements")],
+            [part.kind.id for part in many(model, "inputs")],
             [
                 "model.value.named",
                 "model.value.literal",
-                "model.value.collection.tuple",
+                "model.value.collection.sequence",
             ],
         )
         self.assertTrue(
             shikake.kind_index().is_a(model.kind.id, "model.value.collection")
         )
-        self.assertEqual(value("{}").kind.id, "model.value.collection.dict")
-        self.assertEqual(len(many(value("{1}"), "elements")), 1)
+        self.assertEqual(value("{}").kind.id, "model.value.collection.mapping")
+        self.assertEqual(len(many(value("{1}"), "inputs")), 1)
 
     def test_type_ignore_metadata_is_not_a_model_or_diagnostic(self) -> None:
         source = (

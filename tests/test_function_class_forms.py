@@ -72,7 +72,8 @@ class FunctionClassModelTests(unittest.TestCase):
         )
         self.assertFalse(
             index.is_a(
-                "model.structural_part.dictionary_entry", "model.value.collection.dict"
+                "model.structural_part.dictionary_entry",
+                "model.value.collection.mapping",
             )
         )
 

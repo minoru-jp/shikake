@@ -286,12 +286,31 @@ def build_expression(builder: _Builder, node: ast.expr) -> Model:
                     getattr(pair[0], "col_offset", -1),
                 )
             )
-            model = f.make(
-                "model.value.call",
-                span=span,
-                callee=built.pop(current.func),
-                arguments=tuple(item for _, item in call_parts),
+            inputs = tuple(item for _, item in call_parts)
+            collection = (
+                builder.collections.collection(current)
+                if builder.collections is not None
+                else None
             )
+            if collection is not None:
+                category, immutable = collection
+                # The callee's AST has been retained only for recognition;
+                # the Collection input structure describes construction.
+                built.pop(current.func)
+                model = f.make(
+                    f"model.value.collection.{category}",
+                    span=span,
+                    construction="builtin",
+                    immutable=immutable,
+                    inputs=inputs,
+                )
+            else:
+                model = f.make(
+                    "model.value.call",
+                    span=span,
+                    callee=built.pop(current.func),
+                    arguments=inputs,
+                )
         elif isinstance(current, ast.Lambda):
             model = f.make(
                 "model.value.function_expression",
@@ -345,21 +364,21 @@ def build_expression(builder: _Builder, node: ast.expr) -> Model:
                 value=built.pop(current.value),
             )
         elif isinstance(current, (ast.Tuple, ast.List, ast.Set)):
-            kind = {
-                ast.Tuple: "tuple",
-                ast.List: "list",
-                ast.Set: "set",
-            }[type(current)]
+            kind = "set" if isinstance(current, ast.Set) else "sequence"
             model = f.make(
                 f"model.value.collection.{kind}",
                 span=span,
-                elements=tuple(built.pop(item) for item in current.elts),
+                construction="literal",
+                immutable=isinstance(current, ast.Tuple),
+                inputs=tuple(built.pop(item) for item in current.elts),
             )
         elif isinstance(current, ast.Dict):
             model = f.make(
-                "model.value.collection.dict",
+                "model.value.collection.mapping",
                 span=span,
-                entries=tuple(
+                construction="literal",
+                immutable=False,
+                inputs=tuple(
                     f.make(
                         "model.structural_part.dictionary_entry",
                         span=_span(value),

@@ -27,11 +27,11 @@ Trusted external Shikumi declarations or an `ExternalDefinitionsBuilder` using P
 
 shikake represents three independent properties of a name's binding:
 
-- `introduction`: whether the introduction is structurally stable (`stable` or `unstable`).
+- `introduction`: whether a written introduction is structurally stable (`stable` or `unstable`), or an implicit interpreter built-in introduction (`builtin`).
 - `may_rebind`: whether a name may be rebound by a later or repeatable write, or by an augmented assignment.
 - `may_delete`: whether the syntax indicates possible deletion.
 
-For example, `x = 1` alone has `may_rebind=False`; adding `x = 2` makes it `True`. A lone `n += 1` does not establish a stable introduction. These are **syntactic facts**, not predictions of execution, definite assignment, or judgments about code quality.
+For example, `x = 1` alone has `may_rebind=False`; adding `x = 2` makes it `True`. A lone `n += 1` does not establish a stable introduction. Built-in names such as `tuple` are treated as virtually introduced at module entry. A written module-level assignment to such a name is reported as a *possible rebind*, while a same-named local binding remains separate. Query them through `PackageModel.bindings_for(module, name)` or `SourceInspection.bindings_for(module, name)` after complete inspection. Read-only built-in names are not eagerly enumerated in `name_bindings`. Generic type-parameter annotation scopes and function/class bodies may share an owner Model; `NameBinding.scope_kind` distinguishes their otherwise identical records. These are **syntactic facts**, not predictions of execution, definite assignment, or judgments about code quality. The standard built-in name set is fixed for the Python minor version used for analysis; it does not depend on the current process’s `builtins` namespace. Runtime rebinding and object identity are not inferred.
 
 ### Static relationship candidates
 
@@ -75,6 +75,12 @@ for model in root.walk():
 ```
 
 `parse_source()` builds a Model from one Python source string, and `walk()` traverses its composition tree. Kind, Structure, and Feature let consumers classify elements without depending directly on their original AST nodes.
+
+### Generalized collection construction (v0.0.3)
+
+Collection value Models use the three concrete Kinds `model.value.collection.sequence`, `.mapping`, and `.set`. All share `construction` (`literal`, `builtin`, or `comprehension`), `immutable` (a boolean), and `inputs` (ordered construction expressions). For example, `[1, 2]` and `list(xs)` are both Sequence Models, but have different `construction` values and different input Models. `(1, 2)` and `tuple(xs)` additionally have `immutable=True`.
+
+The standard built-in name inventory is fixed per Python minor version, independent of `site` conveniences or process changes to `builtins`. Constructor calls are normalized only for supported written argument shapes: `list`/`tuple`/`set`/`frozenset` accept 0–1 positional arguments and no keywords or starred arguments; `dict`/`frozendict` accept 0–1 positional arguments and keyword arguments including `**`, but no `*` argument. Invalid or uncertain forms remain Calls without runtime argument validation. Generic PEP 695 type parameters shadow built-ins in the scopes where Python makes them visible. Annotation scopes directly inside a class can also see that class's names; ordinary nested method/class bodies cannot. Calls to built-in collection constructors are normalized **only if** the name is available as an unmodified implicit built-in in its visible lexical scopes. Shadowed or possibly overwritten names remain ordinary calls. This is a static and conservative classification, not evaluation or runtime type inference. Mapping covers `dict` and Python 3.15+ `frozendict`; Set covers `set` and `frozenset`. With `construction="literal"`, `inputs` are direct elements/entries; with `"builtin"`, they are written argument Models; with `"comprehension"`, one nested comprehension Model is stored, so a `walk()` can contain two value Models with the same source span. List, set, and dict comprehensions carry their clause-bearing Models inside `inputs`; generator expressions are unchanged. Tuple/list destructuring targets are represented separately from values. This changes the public Model Kind and Structure contracts relative to v0.0.2. [Details](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/public.md#collection-construction-models-v003-breaking-change).
 
 ### Strict and Partial analysis
 

@@ -8,6 +8,12 @@ class StructuralPart:
     parent_id @= "model"
 
 
+class SequenceTarget:
+    kind_id @= "model.structural_part.sequence_target"
+    structure_ref @= "target_sequence"
+    parent_id @= "model.structural_part"
+
+
 class KeywordArgument:
     kind_id @= "model.structural_part.keyword_argument"
     structure_ref @= "structural_part_keyword_argument"

@@ -37,14 +37,14 @@ class StructuralPlacementTests(unittest.TestCase):
         self.assertEqual(len(assignments), 3)
         for assignment, type_id, count in zip(
             assignments,
-            ("list", "tuple", "set"),
+            ("sequence", "sequence", "set"),
             (2, 2, 1),
             strict=True,
         ):
             collection = one(assignment, "value")
             self.assertEqual(collection.kind.id, f"model.value.collection.{type_id}")
-            self.assertEqual(len(many(collection, "elements")), count)
-            star = many(collection, "elements")[0]
+            self.assertEqual(len(many(collection, "inputs")), count)
+            star = many(collection, "inputs")[0]
             self.assertEqual(star.kind.id, "model.value.starred_expansion")
             self.assertEqual([p.role for p in star.parts()], ["value"])
             self.assertEqual(one(star, "value").kind.id, "model.value.named")
@@ -65,14 +65,15 @@ class StructuralPlacementTests(unittest.TestCase):
     def test_nested_value_expansion_retains_structure(self) -> None:
         (assignment,) = statements("items = [(0, *part) for part in groups if part]")
         comprehension = one(assignment, "value")
-        self.assertEqual(comprehension.kind.id, "model.value.comprehension.list")
-        tup = one(comprehension, "element")
-        star = many(tup, "elements")[1]
+        self.assertEqual(comprehension.kind.id, "model.value.collection.sequence")
+        (construction,) = many(comprehension, "inputs")
+        tup = one(construction, "element")
+        star = many(tup, "inputs")[1]
         self.assertEqual(star.kind.id, "model.value.starred_expansion")
-        self.assertEqual(len(many(comprehension, "clauses")), 1)
+        self.assertEqual(len(many(construction, "clauses")), 1)
         # Mapping expansion stays distinct from value-star expansion.
         (mapping,) = statements("items = {**mapping}")
-        self.assertIsNone(many(one(mapping, "value"), "entries")[0].get("key"))
+        self.assertIsNone(many(one(mapping, "value"), "inputs")[0].get("key"))
 
     def test_annotated_assignments_preserve_target_simple_and_absence(self) -> None:
         source = """\nx: int = 1

@@ -152,9 +152,9 @@ class Python314SyntaxTests(unittest.TestCase):
                 self.assertIs(statement.get("grouped"), grouped)
                 handler = statement.get_nodes("handlers")[0]
                 caught = handler.get_node("exception")
-                self.assertEqual(caught.kind.id, "model.value.collection.tuple")
+                self.assertEqual(caught.kind.id, "model.value.collection.sequence")
                 self.assertEqual(
-                    [item.get("name") for item in caught.get_nodes("elements")],
+                    [item.get("name") for item in caught.get_nodes("inputs")],
                     ["ValueError", "TypeError"],
                 )
                 bracketed = source.replace(

@@ -65,7 +65,9 @@ class SyntacticBindingPolicyTests(unittest.TestCase):
         )
         (ref,) = package.base_references
         self.assertEqual(ref.targets, ())
-        self.assertEqual(ref.binding, shikake.BindingState("stable", False, False))
+        self.assertEqual(
+            ref.binding, shikake.BindingState("stable", False, False, False)
+        )
         self.assertFalse(self.binding(package, "Base").may_rebind)
 
     def test_default_and_match_guard_writes(self) -> None:
@@ -89,7 +91,9 @@ class SyntacticBindingPolicyTests(unittest.TestCase):
             package = shikake.parse_package(folder)
         (ref,) = package.base_references
         self.assertTrue(ref.attribute_modified)
-        self.assertEqual(ref.binding, shikake.BindingState("stable", False, False))
+        self.assertEqual(
+            ref.binding, shikake.BindingState("stable", False, False, True)
+        )
 
     def test_member_writes_do_not_delete_the_method_definition_fact(self) -> None:
         for changed in ("Base.run = None", "del Base.run"):

@@ -223,7 +223,7 @@ class ContextComprehensionTests(unittest.TestCase):
         inspected = shikake.inspect_source(source)
         self.assertTrue(inspected.complete)
         self.assertEqual(inspected.model, strict)
-        self.assertEqual(len(shikake.kind_index().all_kinds()), 143)
+        self.assertEqual(len(shikake.kind_index().all_kinds()), 142)
         ids = {node.kind.id for node in strict.walk()}
         for suffix in ("list", "set", "dict", "generator"):
             self.assertIn("model.value.comprehension." + suffix, ids)

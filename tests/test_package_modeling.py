@@ -32,7 +32,7 @@ def node(model: Model, role: str) -> Model:
 class PackageModelTests(unittest.TestCase):
     def test_kind_contract_and_hierarchy(self) -> None:
         index = shikake.kind_index()
-        self.assertEqual(len(index.all_kinds()), 143)
+        self.assertEqual(len(index.all_kinds()), 142)
         self.assertTrue(
             index.is_a("model.definition.method", "model.definition.function")
         )

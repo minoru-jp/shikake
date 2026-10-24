@@ -368,9 +368,10 @@ class AstKindCorrespondenceTests(unittest.TestCase):
             ),
             Case(
                 "ast.FunctionDef [generator]",
-                "model.definition.generator",
+                "model.definition.function",
                 "def f(): yield 1",
                 "body.0",
+                ("generator",),
             ),
             Case(
                 "ast.AsyncFunctionDef [function]",
@@ -388,10 +389,10 @@ class AstKindCorrespondenceTests(unittest.TestCase):
             ),
             Case(
                 "ast.AsyncFunctionDef [generator]",
-                "model.definition.generator",
+                "model.definition.function",
                 "async def f(): yield 1",
                 "body.0",
-                ("async",),
+                ("async", "generator"),
             ),
             Case("ast.ClassDef", "model.definition.class", "class A: pass", "body.0"),
             Case("ast.If", "model.statement.branch", "if x: pass", "body.0"),

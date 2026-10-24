@@ -3,24 +3,17 @@
 from __future__ import annotations
 
 import ast
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
+from dataclasses import dataclass
 from types import ModuleType
 from typing import Literal, cast
 
 from shikake.external import ExternalDefinitions, load_external_definitions
 
-from .ast_facts import collect_syntax_facts
+from .ast_facts import SyntaxFacts, collect_syntax_facts
 from .builtin_collections import BuiltinCollectionRecognition
-from .external_structures import (
-    _LOCAL_EXTERNAL_ERROR_CODES,
-    ExternalModelingError,
-    _ExternalStructures,
-)
-from .import_policy import (
-    ImportPolicy,
-    _assert_import_policy,
-    _validated_import_options,
-)
+from .external_structures import _ExternalStructures
+from .import_policy import ImportPolicy, ImportPolicyError, check_imports
 from .kinds import KindIndex, kind_index
 from .model import Model, ModelFactory, SourceSpan
 
@@ -35,14 +28,51 @@ def _validated_syntax_validation(mode: SyntaxValidation) -> None:
         raise ValueError(f"unknown syntax_validation: {mode!r}")
 
 
+def _parse_syntax(source: str | bytes, filename: str) -> ast.Module:
+    """Parse using the host's warning configuration without overriding it."""
+    return ast.parse(source, filename=filename, type_comments=False)
+
+
 def _compile_check(tree: ast.Module, filename: str, mode: SyntaxValidation) -> None:
-    """Validate CPython compilation without executing or importing the source."""
+    """Validate without execution; leave compiler warnings to the host."""
     if mode == "compile":
         compile(tree, filename, "exec", dont_inherit=True)
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedSource:
+    """Syntax validation outcome shared by strict and inspection entry points."""
+
+    tree: ast.Module | None
+    error: SyntaxError | ImportPolicyError | None = None
+    phase: Literal["parse", "compile", "import"] | None = None
+
+
+def _prepare_source(
+    source: str | bytes,
+    filename: str,
+    mode: SyntaxValidation,
+    import_policy: ImportPolicy | None,
+) -> _PreparedSource:
+    """Apply the same ordered syntax checks for source and package parsing."""
+    try:
+        tree = _parse_syntax(source, filename)
+    except SyntaxError as error:
+        return _PreparedSource(None, error=error, phase="parse")
+    try:
+        _compile_check(tree, filename, mode)
+    except SyntaxError as error:
+        return _PreparedSource(None, error=error, phase="compile")
+    try:
+        check_imports(tree, import_policy)
+    except ImportPolicyError as error:
+        return _PreparedSource(None, error=error, phase="import")
+    return _PreparedSource(tree)
+
+
 from .modeling.base313 import build_expression, build_statement
 from .modeling.common import UnsupportedSyntaxError, _span
+from .statement_blocks import statement_branches
 
 
 class _OwnYieldFinder:
@@ -102,9 +132,6 @@ class _Builder:
         index: KindIndex,
         *,
         on_unsupported: Callable[[UnsupportedSyntaxError, ast.AST], None] | None = None,
-        on_external: Callable[[ExternalModelingError, ast.AST], None] | None = None,
-        local_external_errors: Mapping[int, tuple[ExternalModelingError, ...]]
-        | None = None,
         external: _ExternalStructures | None = None,
         collections: BuiltinCollectionRecognition | None = None,
     ) -> None:
@@ -114,8 +141,6 @@ class _Builder:
         self.external = external
         self.collections = collections
         self.on_unsupported = on_unsupported
-        self.on_external = on_external
-        self.local_external_errors = local_external_errors or {}
         self._prebuilt_blocks: dict[int, Model] | None = None
         self._current_block_reads: list[int] | None = None
 
@@ -123,44 +148,18 @@ class _Builder:
     def _child_blocks(
         node: ast.stmt, *, class_body: bool
     ) -> tuple[tuple[list[ast.stmt], bool], ...]:
-        """Enumerate the blocks read when this statement is modeled.
-
-        An `elif` chain is one branch Model, not recursively nested branch
-        Models. Its intermediate `orelse` lists therefore need no Model.
-        """
-        if isinstance(node, ast.If):
-            blocks: list[tuple[list[ast.stmt], bool]] = []
-            current = node
-            while True:
-                blocks.append((current.body, class_body))
-                if (
-                    len(current.orelse) == 1
-                    and isinstance(current.orelse[0], ast.If)
-                    and current.orelse[0].col_offset == current.col_offset
-                ):
-                    current = current.orelse[0]
-                    continue
-                if current.orelse:
-                    blocks.append((current.orelse, class_body))
-                return tuple(blocks)
-        if isinstance(node, ast.Match):
-            return tuple((case.body, class_body) for case in node.cases)
-        if isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
-            return ((node.body, class_body), (node.orelse, class_body))
-        if isinstance(node, (ast.Try, ast.TryStar)):
-            return (
-                (node.body, class_body),
-                *((handler.body, class_body) for handler in node.handlers),
-                (node.orelse, class_body),
-                (node.finalbody, class_body),
-            )
-        if isinstance(node, (ast.With, ast.AsyncWith)):
-            return ((node.body, class_body),)
-        if isinstance(node, ast.ClassDef):
-            return ((node.body, True),)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            return ((node.body, False),)
-        return ()
+        """Enumerate already-known AST blocks using the shared traversal."""
+        nested_class_body = (
+            True
+            if isinstance(node, ast.ClassDef)
+            else False
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            else class_body
+        )
+        return tuple(
+            (branch.statements, nested_class_body)
+            for branch in statement_branches(node)
+        )
 
     def _statements(
         self, nodes: list[ast.stmt], *, class_body: bool = False
@@ -172,9 +171,7 @@ class _Builder:
         hides its entire subtree, while valid parents retain supported siblings.
         """
         blocks: dict[int, Model] = {}
-        issues: dict[
-            int, list[tuple[UnsupportedSyntaxError | ExternalModelingError, ast.AST]]
-        ] = {}
+        issues: dict[int, list[tuple[UnsupportedSyntaxError, ast.AST]]] = {}
         self._prebuilt_blocks = blocks
         try:
             pending: list[tuple[list[ast.stmt], bool, bool]] = [
@@ -192,24 +189,13 @@ class _Builder:
                         )
                     continue
                 models: list[Model] = []
-                block_issues: list[
-                    tuple[UnsupportedSyntaxError | ExternalModelingError, ast.AST]
-                ] = []
+                block_issues: list[tuple[UnsupportedSyntaxError, ast.AST]] = []
                 for statement in group:
-                    preflight = self.local_external_errors.get(id(statement), ())
-                    if preflight:
-                        block_issues.extend((error, statement) for error in preflight)
-                        continue
                     accessed: list[int] = []
                     self._current_block_reads = accessed
                     try:
                         model = self.statement(statement, class_body=in_class)
-                    except (UnsupportedSyntaxError, ExternalModelingError) as error:
-                        if isinstance(error, ExternalModelingError) and (
-                            self.on_external is None
-                            or error.code not in _LOCAL_EXTERNAL_ERROR_CODES
-                        ):
-                            raise
+                    except UnsupportedSyntaxError as error:
                         block_issues.append((error, statement))
                     else:
                         models.append(model)
@@ -225,14 +211,9 @@ class _Builder:
             root_issues = issues[id(nodes)]
             if root_issues:
                 for error, statement in root_issues:
-                    if isinstance(error, UnsupportedSyntaxError):
-                        if self.on_unsupported is None:
-                            raise error
-                        self.on_unsupported(error, statement)
-                    elif self.on_external is not None:
-                        self.on_external(error, statement)
-                    else:
+                    if self.on_unsupported is None:
                         raise error
+                    self.on_unsupported(error, statement)
             statements = blocks[id(nodes)].get("statements")
             return cast(tuple[Model, ...], statements)
         finally:
@@ -263,21 +244,21 @@ class _Builder:
         if node.type_comment is not None:
             raise UnsupportedSyntaxError(node, "function type comment")
 
-        if _has_own_yield(node):
-            definition_kind = "model.definition.generator"
-        elif method:
-            definition_kind = "model.definition.method"
-        else:
-            definition_kind = "model.definition.function"
+        features = (
+            *(("async",) if isinstance(node, ast.AsyncFunctionDef) else ()),
+            *(("generator",) if _has_own_yield(node) else ()),
+        )
         return self.factory.make(
-            definition_kind,
+            "model.definition.method" if method else "model.definition.function",
             span=_span(node),
-            features=("async",) if isinstance(node, ast.AsyncFunctionDef) else (),
+            features=features,
             name=node.name,
             parameters=self._parameters(node.args),
             type_parameters=self._type_parameters(getattr(node, "type_params", ())),
             decorators=tuple(self.expression(item) for item in node.decorator_list),
-            returns=self.expression(node.returns) if node.returns is not None else None,
+            returns=self.expression(node.returns, type_context=True)
+            if node.returns is not None
+            else None,
             body=self.block(node.body),
         )
 
@@ -305,7 +286,7 @@ class _Builder:
                         "model.definition.type_parameter.type_variable",
                         span=_span(param),
                         name=name,
-                        restriction=self.expression(bound)
+                        restriction=self.expression(bound, type_context=True)
                         if bound is not None
                         else None,
                         default=value,
@@ -351,6 +332,19 @@ class _Builder:
             expressions.append(args.kwarg.annotation)
         return tuple(expressions)
 
+    @staticmethod
+    def _annotation_expressions(args: ast.arguments) -> frozenset[ast.expr]:
+        arguments = (
+            *args.posonlyargs,
+            *args.args,
+            *((args.vararg,) if args.vararg else ()),
+            *args.kwonlyargs,
+            *((args.kwarg,) if args.kwarg else ()),
+        )
+        return frozenset(
+            item.annotation for item in arguments if item.annotation is not None
+        )
+
     def _parameters(
         self, args: ast.arguments, *, prebuilt: dict[ast.expr, Model] | None = None
     ) -> tuple[Model, ...]:
@@ -358,7 +352,10 @@ class _Builder:
 
         def modeled(expression: ast.expr) -> Model:
             return (
-                self.expression(expression)
+                self.expression(
+                    expression,
+                    type_context=expression in self._annotation_expressions(args),
+                )
                 if prebuilt is None
                 else prebuilt.pop(expression)
             )
@@ -713,9 +710,9 @@ class _Builder:
         """Model a statement through baseline rules and internal AST refinements."""
         return build_statement(self, node, class_body=class_body)
 
-    def expression(self, node: ast.expr) -> Model:
-        """Build with the shared iterative engine and internal version refinements."""
-        return build_expression(self, node)
+    def expression(self, node: ast.expr, *, type_context: bool = False) -> Model:
+        """Build expressions; type context is purely a syntactic position."""
+        return build_expression(self, node, type_context=type_context)
 
 
 def _external_settings(
@@ -732,29 +729,68 @@ def _external_settings(
     return prepared.index, prepared
 
 
+@dataclass(frozen=True, slots=True)
+class _ModelingContext:
+    """Reusable syntax facts and recognizers for a single source tree."""
+
+    syntax: SyntaxFacts
+    external: _ExternalStructures | None
+    collections: BuiltinCollectionRecognition
+
+
+def _modeling_context(
+    tree: ast.Module,
+    definitions: ExternalDefinitions | None,
+    *,
+    include_references: bool = True,
+) -> _ModelingContext:
+    """Compute syntax-dependent inputs once for any modeling entry point."""
+    syntax = collect_syntax_facts(tree, include_references=include_references)
+    return _ModelingContext(
+        syntax,
+        _ExternalStructures.for_facts(syntax, definitions) if definitions else None,
+        BuiltinCollectionRecognition(tree, syntax),
+    )
+
+
+def _build_module(
+    tree: ast.Module,
+    index: KindIndex,
+    context: _ModelingContext,
+    *,
+    name: str = "<source>",
+    on_unsupported: Callable[[UnsupportedSyntaxError, ast.AST], None] | None = None,
+) -> tuple[Model, dict[int, Model]]:
+    """Use identical Model construction for strict and partial entry points."""
+    builder = _Builder(
+        index,
+        external=context.external,
+        collections=context.collections,
+        on_unsupported=on_unsupported,
+    )
+    model = builder.module(tree, name=name)
+    return model, builder.statement_models
+
+
 def parse_source(
     source: str,
     *,
     filename: str = "<source>",
     index: KindIndex | None = None,
     definitions: ModuleType | ExternalDefinitions | None = None,
-    import_policy: ImportPolicy = "unrestricted",
-    allowed_modules: tuple[str, ...] = (),
     syntax_validation: SyntaxValidation = "compile",
+    import_policy: ImportPolicy | None = None,
 ) -> Model:
     """Model one source without execution; apply optional trusted descriptions."""
-    selected_modules = _validated_import_options(import_policy, allowed_modules)
     _validated_syntax_validation(syntax_validation)
     resolved_index, prepared = _external_settings(definitions, index)
-    tree = ast.parse(source, filename=filename, type_comments=False)
-    _compile_check(tree, filename, syntax_validation)
-    _assert_import_policy(
-        tree, prepared, import_policy=import_policy, allowed_modules=selected_modules
+    prepared_source = _prepare_source(
+        source, filename, syntax_validation, import_policy
     )
-    syntax = collect_syntax_facts(tree, include_references=prepared is not None)
-    matcher = _ExternalStructures.for_facts(syntax, prepared) if prepared else None
-    return _Builder(
-        resolved_index,
-        external=matcher,
-        collections=BuiltinCollectionRecognition(tree, syntax),
-    ).module(tree)
+    if prepared_source.error is not None:
+        raise prepared_source.error
+    tree = prepared_source.tree
+    assert tree is not None
+    context = _modeling_context(tree, prepared, include_references=prepared is not None)
+    model, _ = _build_module(tree, resolved_index, context)
+    return model

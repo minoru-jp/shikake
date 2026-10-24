@@ -28,9 +28,9 @@ class TypeDeclarationContracts(unittest.TestCase):
     def test_kind_structure_feature_contracts(self) -> None:
         index = shikake.kind_index()
         self.assertEqual(
-            (len(index.all_kinds()), len(index.all_structures())), (143, 62)
+            (len(index.all_kinds()), len(index.all_structures())), (142, 62)
         )
-        self.assertEqual(len(index.all_features()), 2)
+        self.assertEqual(len(index.all_features()), 3)
         self.assertIsNone(index.structure_of("model.definition.type_parameter"))
         self.assertTrue(
             index.is_a(
@@ -119,7 +119,7 @@ class TypeDeclarationContracts(unittest.TestCase):
         self.assertEqual(nodes(method, "type_parameters")[0].get("name"), "U")
         self.assertEqual(async_fn.features, ("async",))
         self.assertEqual(nodes(async_fn, "type_parameters")[0].get("name"), "V")
-        self.assertEqual(generator.kind.id, "model.definition.generator")
+        self.assertEqual(generator.kind.id, "model.definition.function")
         self.assertEqual(len(nodes(generator, "type_parameters")), 1)
         result = shikake.inspect_source("class C[T]: pass\n")
         self.assertTrue(result.complete)

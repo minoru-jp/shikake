@@ -1,23 +1,25 @@
-"""The README canonical source replaces the two application-specific guides."""
+"""Validate the example-led README canonical source and its executable samples."""
 
 from __future__ import annotations
 
 import ast
+import contextlib
 import importlib
+import io
+import re
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
-import shikake
-
 ROOT = Path(__file__).resolve().parents[1]
-CANONICAL = ROOT / "devdocs" / "canonical_sources"
+CANONICAL = ROOT / "devdocs" / "canonical_sources" / "readme" / "canonical.py"
 
 
 class ReadmeCanonicalTests(unittest.TestCase):
-    def test_readme_contains_shared_concepts_and_no_legacy_guides(self) -> None:
-        path = CANONICAL / "readme" / "canonical.py"
-        source = path.read_text(encoding="utf-8")
-        tree = ast.parse(source)
+    def test_readme_is_example_led_and_links_to_detailed_documents(self) -> None:
+        text = CANONICAL.read_text(encoding="utf-8")
+        tree = ast.parse(text)
         readme = next(node for node in tree.body if isinstance(node, ast.ClassDef))
         sections = {
             node.name: node for node in readme.body if isinstance(node, ast.ClassDef)
@@ -25,31 +27,55 @@ class ReadmeCanonicalTests(unittest.TestCase):
         self.assertEqual(
             tuple(sections),
             (
-                "ALPHA",
-                "CONCEPTS",
                 "INSTALL",
-                "QUICK_START",
-                "COMMENTS_V0_0_2",
+                "EXAMPLE",
+                "DESIGN",
                 "EXTERNAL",
-                "APPLICATIONS",
-                "LIMITATIONS",
+                "FURTHER",
                 "DOCUMENTS",
                 "LICENSE",
             ),
         )
-        self.assertIn(
-            "予告なく破壊的な変更", ast.get_docstring(sections["ALPHA"]) or ""
+        example = sections["EXAMPLE"]
+        self.assertEqual(
+            tuple(node.name for node in example.body if isinstance(node, ast.ClassDef)),
+            ("SOURCE", "MODELING", "BINDINGS"),
         )
-        self.assertIn("MIT License", ast.get_docstring(sections["LICENSE"]) or "")
-        self.assertIn("外部構造", ast.get_docstring(sections["EXTERNAL"]) or "")
-        self.assertIn("Strict解析", source)
-        self.assertIn("Partial解析", source)
-        self.assertIn("may_rebind", source)
-        self.assertIn("may_delete", source)
-        self.assertNotIn("docs/guides/", source)
-        self.assertFalse((CANONICAL / "guides").exists())
+        for expected in (
+            "`ast`",
+            "`tokenize`",
+            "Shikumi",
+            "アルファ版",
+            "破壊的変更",
+            "match_generic @=",
+            "load_external_definitions",
+            "外部インターフェース",
+            "ExternalDefinitionsBuilder",
+            "may_value_use",
+            "設計：構造を共有し、解釈は利用側へ",
+            "型推論や識別子の詳細な追跡はしません",
+            "利用側が決める",
+            "docs/STATUS.md",
+            "CHANGELOG.md",
+            "docs/api_reference/INDEX.md",
+        ):
+            self.assertIn(expected, text)
+        self.assertNotIn("docs/guides/", text)
+        self.assertNotIn("v0.0.3", text)
+        self.assertFalse((CANONICAL.parent.parent / "guides").exists())
 
-    def test_readme_sample_and_source_are_valid_without_rendering(self) -> None:
+    def test_public_readme_keeps_design_boundary(self) -> None:
+        published = (ROOT / "README.md").read_text(encoding="utf-8")
+        for expected in (
+            "## Design: structure without prescribed semantics",
+            "No type inference or detailed identifier tracking.",
+            "**Consumers decide:**",
+            "**`False` does not prove absence.**",
+            "Consumers needing stronger guarantees must perform additional validation.",
+        ):
+            self.assertIn(expected, published)
+
+    def test_readme_source_is_valid_and_examples_run(self) -> None:
         from shikumi_devdoc.context import Context
         from shikumi_devdoc.norms.document import system as document
         from shikumi_devdoc.realizers.document import MarkdownRealizer
@@ -60,44 +86,107 @@ class ReadmeCanonicalTests(unittest.TestCase):
         validated = document.validate(canonical_module, placement=())
         self.assertTrue(validated.is_valid, validated.diagnostics)
         checked = MarkdownRealizer(
-            Context(
-                {
-                    "project": {
-                        "name": "shikake",
-                        "import_name": "shikake",
-                        "requires_python": ">=3.11",
-                    }
-                }
-            )
+            Context({"project": {"name": "shikake", "import_name": "shikake"}})
         ).check(validated.view)
         self.assertTrue(checked.is_realizable, checked.diagnostics)
 
-        tree = ast.parse((CANONICAL / "readme" / "canonical.py").read_text())
-        root = next(node for node in tree.body if isinstance(node, ast.ClassDef))
-        quick = next(
+        tree = ast.parse(CANONICAL.read_text(encoding="utf-8"))
+        readme = next(node for node in tree.body if isinstance(node, ast.ClassDef))
+        example = next(
             node
-            for node in root.body
-            if isinstance(node, ast.ClassDef) and node.name == "QUICK_START"
+            for node in readme.body
+            if isinstance(node, ast.ClassDef) and node.name == "EXAMPLE"
         )
-        prose = ast.get_docstring(quick)
-        assert prose is not None
-        sample = prose.split("```python\n", 1)[1].split("\n```", 1)[0]
-        sample = sample.replace("{{project.import_name}}", "shikake")
-        sample_tree = ast.parse(sample)
-        source_value = next(
-            node.value
-            for node in sample_tree.body
-            if isinstance(node, ast.Assign)
-            and any(
-                isinstance(target, ast.Name) and target.id == "source"
-                for target in node.targets
+        blocks: list[str] = []
+        for section in example.body:
+            if not isinstance(section, ast.ClassDef):
+                continue
+            body = ast.get_docstring(section)
+            assert body is not None
+            blocks.extend(re.findall(r"```python\n(.*?)\n```", body, re.DOTALL))
+        self.assertEqual(len(blocks), 3)
+
+        namespace: dict[str, object] = {}
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            for block in blocks:
+                exec(compile(block, "<readme-example>", "exec"), namespace)  # noqa: S102
+        assert isinstance(namespace["source"], str)
+        self.assertIn("class Accumulator", namespace["source"])
+        self.assertEqual(
+            output.getvalue().splitlines(),
+            [
+                "model.definition.class: 1",
+                "model.definition.function: 1",
+                "demo.type.int32: 6",
+                "demo.type.vector: 2",
+                "demo.operation.clamp: 1",
+                "Int32 BindingState(introduction='external', may_rebind=False, may_delete=False, may_value_use=False)",
+                "clamp BindingState(introduction='external', may_rebind=False, may_delete=False, may_value_use=False)",
+                "total BindingState(introduction='stable', may_rebind=True, may_delete=False, may_value_use=True)",
+            ],
+        )
+
+    def test_shikumi_declaration_example_models_same_source(self) -> None:
+        tree = ast.parse(CANONICAL.read_text(encoding="utf-8"))
+        readme = next(node for node in tree.body if isinstance(node, ast.ClassDef))
+        example = next(
+            node
+            for node in readme.body
+            if isinstance(node, ast.ClassDef) and node.name == "EXAMPLE"
+        )
+        external = next(
+            node
+            for node in readme.body
+            if isinstance(node, ast.ClassDef) and node.name == "EXTERNAL"
+        )
+        source_node = next(
+            node
+            for node in example.body
+            if isinstance(node, ast.ClassDef) and node.name == "SOURCE"
+        )
+        declarations_node = next(
+            node
+            for node in external.body
+            if isinstance(node, ast.ClassDef) and node.name == "DECLARATIONS"
+        )
+        loading_node = next(
+            node
+            for node in external.body
+            if isinstance(node, ast.ClassDef) and node.name == "LOADING"
+        )
+
+        def snippet(node: ast.ClassDef) -> str:
+            body = ast.get_docstring(node)
+            assert body is not None
+            snippets = re.findall(r"```python\n(.*?)\n```", body, re.DOTALL)
+            self.assertEqual(len(snippets), 1)
+            return snippets[0]
+
+        with tempfile.TemporaryDirectory(prefix="shikake-readme-") as directory:
+            Path(directory, "trusted_definitions.py").write_text(
+                snippet(declarations_node), encoding="utf-8"
             )
-        )
-        assert isinstance(source_value, ast.Constant)
-        assert isinstance(source_value.value, str)
-        parsed = shikake.parse_source(source_value.value)
-        self.assertIsInstance(parsed, shikake.Model)
-        self.assertGreater(sum(1 for _ in parsed.walk()), 20)
+            sys.path.insert(0, directory)
+            namespace: dict[str, object] = {}
+            try:
+                exec(  # noqa: S102
+                    compile(snippet(source_node), "<readme-source>", "exec"), namespace
+                )
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    exec(  # noqa: S102
+                        compile(snippet(loading_node), "<readme-loading>", "exec"),
+                        namespace,
+                    )
+                self.assertEqual(output.getvalue().splitlines(), ["1"])
+                definitions = namespace["definitions"]
+                self.assertEqual(len(definitions.type_mappings), 1)  # type: ignore[attr-defined]
+                self.assertEqual(len(definitions.generic_mappings), 1)  # type: ignore[attr-defined]
+                self.assertEqual(len(definitions.mappings), 1)  # type: ignore[attr-defined]
+            finally:
+                sys.path.remove(directory)
+                sys.modules.pop("trusted_definitions", None)
 
 
 if __name__ == "__main__":

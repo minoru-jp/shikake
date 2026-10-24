@@ -39,11 +39,11 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
         self.assertIsNone(refs["C"].binding)
         self.assertEqual(refs["C"].targets, ())
         self.assertEqual(
-            refs["D"].binding, shikake.BindingState("stable", False, False)
+            refs["D"].binding, shikake.BindingState("stable", False, False, True)
         )
         self.assertEqual(refs["D"].targets[0].get_name("name"), "Bound")
         self.assertEqual(
-            refs["E"].binding, shikake.BindingState("stable", False, False)
+            refs["E"].binding, shikake.BindingState("stable", False, False, False)
         )
         names = {binding.name for binding in parsed.name_bindings}
         self.assertNotIn("B", names)
@@ -68,7 +68,7 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
         self.assertIsNone(refs["Local"].binding)
         self.assertEqual(refs["Local"].targets, ())
         self.assertEqual(
-            refs["Nested"].binding, shikake.BindingState("stable", False, False)
+            refs["Nested"].binding, shikake.BindingState("stable", False, False, False)
         )
         self.assertEqual(refs["Nested"].targets[0].get_name("name"), "B")
         self.assertFalse(
@@ -108,7 +108,7 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
             ["Base"],
         )
         self.assertEqual(
-            refs["Derived"].binding, shikake.BindingState("stable", False, False)
+            refs["Derived"].binding, shikake.BindingState("stable", False, False, False)
         )
         self.assertEqual(
             len(
@@ -188,7 +188,7 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     refs[derived].binding,
-                    shikake.BindingState("stable", False, False),
+                    shikake.BindingState("stable", False, False, False),
                 )
         self.assertEqual(refs["NotImported"].targets, ())
         self.assertEqual(refs["Missing"].targets, ())
@@ -237,7 +237,8 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
         )
         self.assertEqual(refs["External"].targets, ())
         self.assertEqual(
-            refs["External"].binding, shikake.BindingState("stable", False, False)
+            refs["External"].binding,
+            shikake.BindingState("stable", False, False, False),
         )
 
     def test_module_and_class_attributes(self) -> None:
@@ -252,7 +253,7 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
         self.assertEqual(refs["B"].targets[0].get_name("name"), "Local")
         for name in ("A", "B"):
             self.assertEqual(
-                refs[name].binding, shikake.BindingState("stable", False, False)
+                refs[name].binding, shikake.BindingState("stable", False, False, False)
             )
 
     def test_missing_class_member_does_not_fall_back_to_module_name(self) -> None:
@@ -268,7 +269,7 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
         reference = self.refs(parsed)["Derived"]
         self.assertEqual(reference.targets, ())
         self.assertEqual(
-            reference.binding, shikake.BindingState("stable", False, False)
+            reference.binding, shikake.BindingState("stable", False, False, False)
         )
         self.assertEqual(parsed.override_candidates, ())
 
@@ -321,7 +322,8 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
         )
         self.assertEqual(self.refs(parsed)["D"].targets, ())
         self.assertEqual(
-            self.refs(parsed)["D"].binding, shikake.BindingState("stable", False, False)
+            self.refs(parsed)["D"].binding,
+            shikake.BindingState("stable", False, False, False),
         )
 
     def test_conditional_imports_keep_all_explicit_base_candidates(self) -> None:
@@ -345,7 +347,9 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
             result = shikake.parse_package(root)
         ref = self.refs(result)["D"]
         self.assertEqual(len(ref.targets), 2)
-        self.assertEqual(ref.binding, shikake.BindingState("unstable", True, False))
+        self.assertEqual(
+            ref.binding, shikake.BindingState("unstable", True, False, False)
+        )
         self.assertEqual(
             {candidate.base_module for candidate in result.override_candidates},
             {"sample.base", "sample.alt"},
@@ -369,7 +373,9 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
         )
         ref = self.refs(parsed)["D"]
         self.assertEqual(len(ref.targets), 2)
-        self.assertEqual(ref.binding, shikake.BindingState("unstable", True, False))
+        self.assertEqual(
+            ref.binding, shikake.BindingState("unstable", True, False, False)
+        )
 
     def test_conditional_module_imports_follow_written_attributes(self) -> None:
         parsed = self.parse(
@@ -389,7 +395,7 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
         refs = self.refs(parsed)
         self.assertEqual(len(refs["D"].targets), 2)
         self.assertEqual(
-            refs["D"].binding, shikake.BindingState("unstable", True, False)
+            refs["D"].binding, shikake.BindingState("unstable", True, False, False)
         )
         self.assertEqual(refs["NoGuess"].targets, ())
 
@@ -412,7 +418,7 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
         self.assertEqual(len(refs["Late"].targets), 1)
         self.assertEqual(len(refs["Later"].targets), 2)
         self.assertEqual(
-            refs["Late"].binding, shikake.BindingState("unstable", True, False)
+            refs["Late"].binding, shikake.BindingState("unstable", True, False, False)
         )
 
     def test_repeated_import_to_same_class_is_not_duplicate_candidate(self) -> None:
@@ -431,7 +437,9 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
         )
         ref = self.refs(parsed)["D"]
         self.assertEqual(len(ref.targets), 1)
-        self.assertEqual(ref.binding, shikake.BindingState("unstable", True, True))
+        self.assertEqual(
+            ref.binding, shikake.BindingState("unstable", True, True, False)
+        )
 
     def test_conditional_circular_imports_do_not_invent_candidates(self) -> None:
         parsed = self.parse(
@@ -451,7 +459,9 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
         )
         ref = self.refs(parsed)["D"]
         self.assertEqual(len(ref.targets), 2)
-        self.assertEqual(ref.binding, shikake.BindingState("unstable", True, False))
+        self.assertEqual(
+            ref.binding, shikake.BindingState("unstable", True, False, False)
+        )
 
     def test_package_attribute_import_is_not_guessed(self) -> None:
         parsed = self.parse(
@@ -464,7 +474,7 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
         )
         refs = self.refs(parsed)
         self.assertEqual(
-            refs["D"].binding, shikake.BindingState("unstable", False, False)
+            refs["D"].binding, shikake.BindingState("unstable", False, False, False)
         )
         # Attribute candidates survive the package/submodule collision even
         # though the independent binding property remains unstable.
@@ -489,7 +499,7 @@ class ReferenceResolutionFactsTests(unittest.TestCase):
                 "case.py": "from .base import *\nclass D(Base): pass\n",
             }
         )
-        self.assertEqual(self.refs(parsed)["D"].targets[0].get_name("name"), "Base")
+        self.assertEqual(self.refs(parsed)["D"].targets, ())
 
 
 if __name__ == "__main__":

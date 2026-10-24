@@ -38,18 +38,6 @@ class Method:
     parent_id @= "model.definition.function"
 
 
-class Generator:
-    """Independent definition subject, not a subtype of Function or Method.
-
-    The same roles describe the written signature and body. A generator
-    inside a class is identified through composition, not a combination Kind.
-    """
-
-    kind_id @= "model.definition.generator"
-    structure_ref @= "callable_definition"
-    parent_id @= "model.definition"
-
-
 class TypeAlias:
     """A declared type alias, distinct from ordinary assignment."""
 

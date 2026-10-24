@@ -6,12 +6,16 @@ bindings and declaration locations, not guaranteed runtime object identities.
 
 from __future__ import annotations
 
+import ast
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, cast
 
-from .ast_facts import SyntaxFacts, SyntaxScope, explicit_import_path
+from shikake.external import ExternalDefinitions
+
+from .ast_facts import SyntaxEvent, SyntaxFacts, SyntaxScope, explicit_import_path
 from .builtin_names import BUILTIN_NAMES
+from .external_structures import _ExternalStructures
 from .lexical_scopes import binding_owner, visible_owners
 from .model import Model
 
@@ -46,13 +50,15 @@ def _resolved_module(
 class BindingState:
     """Syntactic properties of a name *within one module and lexical scope*.
 
-    A conditional first introduction is unstable. Modification flags describe
-    additional or repeatable operations, not guaranteed runtime execution.
+    Conditional introductions are unstable; 'external' is a stable imported
+    interface. The remaining flags are lightweight syntactic observations,
+    not runtime guarantees. A false value-use flag does not prove absence.
     """
 
-    introduction: Literal["stable", "unstable", "builtin"]
+    introduction: Literal["stable", "unstable", "builtin", "external"]
     may_rebind: bool
     may_delete: bool
+    may_value_use: bool
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -134,10 +140,10 @@ class _Scope:
     parent: _Scope | None
     module: str
     events: dict[str, list[_BindingEvent]] = field(default_factory=dict)
-    stars: list[_BindingEvent] = field(default_factory=list)
     globals: set[str] = field(default_factory=set)
     nonlocals: set[str] = field(default_factory=set)
     model: Model | None = None
+    value_uses: set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,25 +167,19 @@ class _FactIndex:
     scopes: tuple[_Scope, ...]
     class_scopes: Mapping[int, _Scope]
     attribute_changes: Mapping[str, frozenset[str]]
+    external_targets: frozenset[str] = frozenset()
+
+    def builtin_value_uses(self) -> frozenset[tuple[str, str]]:
+        return frozenset(
+            (module, name)
+            for module, root in self.modules.items()
+            for name in root.value_uses & BUILTIN_NAMES
+        )
 
     def changes_attribute(self, module: str, written_path: str) -> bool:
         return any(
             written_path == path or written_path.startswith(path + ".")
             for path in self.attribute_changes.get(module, ())
-        )
-
-    def builtin_star_conflicts(self) -> frozenset[tuple[str, str]]:
-        """Possible module-level wildcard writes to interpreter built-in names.
-
-        Only modules with star imports pay for this finite check. Query-time
-        synthesized bindings therefore agree with the shared AST fact rules.
-        """
-        return frozenset(
-            (module, name)
-            for module, root in self.modules.items()
-            if root.stars
-            for name in BUILTIN_NAMES
-            if any(self._star_may_write(event, name) for event in root.stars)
         )
 
     def bindings(self) -> tuple[NameBinding, ...]:
@@ -223,25 +223,38 @@ class _FactIndex:
         if owner.kind == "module" and name in BUILTIN_NAMES:
             return BindingState(
                 "builtin",
-                bool(introductions)
-                or any(self._star_may_write(item, name) for item in owner.stars),
+                bool(introductions),
                 any(event.operation == "delete" for event in events),
+                name in owner.value_uses,
             )
         if not introductions:
             return None
-        return BindingState(
-            "unstable"
-            if introductions[0].conditional
-            or introductions[0].operation == "augmented_write"
+        first = introductions[0]
+        stable = not (
+            first.conditional
+            or first.operation == "augmented_write"
             or any(self._ambiguous_package_import(event) for event in introductions)
-            else "stable",
+        )
+        external = (
+            owner.kind == "module"
+            and first.operation == "import"
+            and isinstance(first.value, tuple)
+            and bool(first.value[1])
+            and any(
+                target == f"{first.value[0]}.{first.value[1]}"
+                or target.startswith(f"{first.value[0]}.{first.value[1]}.")
+                for target in self.external_targets
+            )
+        )
+        return BindingState(
+            "unstable" if not stable else "external" if external else "stable",
             len(introductions) > 1
             or any(
                 event.repeatable or event.operation == "augmented_write"
                 for event in introductions
-            )
-            or any(self._star_may_write(item, name) for item in owner.stars),
+            ),
             any(event.operation == "delete" for event in events),
+            name in owner.value_uses,
         )
 
     def _ambiguous_package_import(self, event: _BindingEvent) -> bool:
@@ -257,31 +270,14 @@ class _FactIndex:
     def package_name_conflicts(self, package: str, name: str) -> bool:
         """A written package export might compete with its child module.
 
-        Used by both root-name stability and target resolution. A star import
-        only supplies a *possibility*, not an invented BindingState for names.
+        Only explicitly written bindings can conflict with a submodule.
         """
         root = self.modules.get(package)
         return (
             root is not None
             and f"{package}.{name}" in self.modules
-            and (
-                name in root.events
-                or any(self._star_may_write(item, name) for item in root.stars)
-            )
+            and name in root.events
         )
-
-    def _star_may_write(self, event: _BindingEvent, name: str) -> bool:
-        source = event.value
-        if not isinstance(source, tuple) or source[0] not in self.modules:
-            return True
-        root = self.modules[source[0]]
-        if "__all__" in root.events:
-            return True  # Unknown exports, including dynamically built __all__.
-        if name.startswith("_"):
-            return False
-        # Do not recursively resolve export chains merely to decide whether a
-        # star import *might* shadow the name. This also handles cyclic stars.
-        return name in root.events or bool(root.stars)
 
     @staticmethod
     def _locally_binds(scope: _Scope, name: str) -> bool:
@@ -301,12 +297,10 @@ class _FactIndex:
     def reference_state(self, site: _DefinitionSite, name: str) -> BindingState | None:
         """Return root-name syntactic facts in its visible lexical scope."""
         if name in site.header_type_parameters:
-            return BindingState("stable", False, False)
+            return BindingState("stable", False, False, False)
         for owner in self._visible_owners(site, name):
             events = owner.events.get(name, ())
-            if any(event.operation != "annotation" for event in events) or any(
-                self._star_may_write(event, name) for event in owner.stars
-            ):
+            if any(event.operation != "annotation" for event in events):
                 return self.state(owner, name)
             if owner.kind == "function" and events:
                 # Annotation-only locals mask outer bindings, even though the
@@ -315,18 +309,6 @@ class _FactIndex:
             if owner.kind == "module" and name in BUILTIN_NAMES:
                 return self.state(owner, name)
         return None
-
-    def _star_candidate_is_known(self, event: _BindingEvent, name: str) -> bool:
-        """Only expand star imports with an unambiguous implicit export rule.
-
-        Explicit imports may follow __all__, but wildcard exports with an
-        explicit (potentially dynamic) __all__ cannot be guessed from names.
-        """
-        source = event.value
-        if not isinstance(source, tuple) or name.startswith("_"):
-            return False
-        root = self.modules.get(source[0])
-        return root is not None and "__all__" not in root.events
 
     def lookup(
         self,
@@ -366,23 +348,10 @@ class _FactIndex:
                 for event in all_introductions
                 if cutoff is None or event.sequence <= cutoff
             )
-            all_stars = tuple(
-                item for item in owner.stars if self._star_may_write(item, name)
-            )
-            stars = tuple(
-                item for item in all_stars if cutoff is None or item.sequence <= cutoff
-            )
-            if not events and not stars and (all_introductions or all_stars):
-                # A later local declaration must not be borrowed from an outer
-                # name, and a later import cannot create an earlier candidate.
+            if not events and all_introductions:
                 return _UnknownBinding("later_introduction")
-            if not events and not stars:
-                # The declaration itself still occupies its lexical name.
-                # If no earlier/sibling introduction survives, do not borrow
-                # an unrelated name from an enclosing scope as its base.
-                if events or any(
-                    event.operation == "definition" for event in all_events
-                ):
+            if not events:
+                if any(event.operation == "definition" for event in all_events):
                     return _UnknownBinding("self_definition")
                 if owner.kind == "function" and all_events:
                     return _UnknownBinding("unbound_name")
@@ -399,19 +368,6 @@ class _FactIndex:
                 for event in events
                 if isinstance(event.value, (tuple, _ExplicitModulePath))
             )
-            if stars:
-                if (
-                    len(stars) == 1
-                    and not events
-                    and not stars[0].conditional
-                    and self._star_candidate_is_known(stars[0], name)
-                ):
-                    source = stars[0].value
-                    assert isinstance(source, tuple)
-                    exported = self.export(source[0], name, _seen)
-                    if not isinstance(exported, _UnknownBinding):
-                        return exported
-                return _UnknownBinding("wildcard_import", known, import_candidates)
             # Later operations still contribute to whole-scope classification;
             # only candidate discovery is restricted by the written position.
             state = self._state_from_events(owner, name, state_events)
@@ -455,136 +411,231 @@ class _FactIndex:
         return self.lookup(_DefinitionSite(module, root.model, root), name, seen)
 
 
-def _collect_facts(
-    modules: dict[str, tuple[Model, bool]],
-    syntax: Mapping[str, tuple[SyntaxFacts, Mapping[int, Model]]],
-    *,
-    definitions: frozenset[str] = frozenset({"model.definition.class"}),
-) -> _FactIndex:
-    """Attach Model identities to AST-only lexical facts, without rescanning.
+def _reference_root(node: ast.Name | ast.Attribute) -> ast.Name | None:
+    """Inspect a recorded maximal attribute chain without a second AST pass."""
+    current: ast.AST = node
+    while isinstance(current, ast.Attribute):
+        current = current.value
+    return current if isinstance(current, ast.Name) else None
 
-    The AST traversal has already happened once, prior to Model conversion.
-    A model is used only to identify supported declarations and their spans;
-    it never supplies lexical binding or import facts.
+
+def _make_scopes(
+    module_name: str,
+    module: Model,
+    facts: SyntaxFacts,
+    modeled: Mapping[int, Model],
+    roots: dict[str, _Scope],
+    scopes: list[_Scope],
+    class_scopes: dict[int, _Scope],
+) -> dict[SyntaxScope, _Scope]:
+    """Project existing AST scopes onto their Model owners."""
+    local: dict[SyntaxScope, _Scope] = {}
+    for lexical in facts.scopes:
+        parent = local.get(lexical.parent) if lexical.parent is not None else None
+        scope_model = (
+            module if lexical.kind == "module" else modeled.get(id(lexical.node))
+        )
+        scope = _Scope(lexical.kind, parent, module_name, model=scope_model)
+        scope.globals.update(lexical.globals)
+        scope.nonlocals.update(lexical.nonlocals)
+        local[lexical] = scope
+        scopes.append(scope)
+        if lexical.kind == "module":
+            roots[module_name] = scope
+        if lexical.kind == "class" and scope_model is not None:
+            class_scopes[id(scope_model)] = scope
+    return local
+
+
+def _append_definition_sites(
+    module_name: str,
+    facts: SyntaxFacts,
+    modeled: Mapping[int, Model],
+    local: Mapping[SyntaxScope, _Scope],
+    definitions: frozenset[str],
+    sites: list[_DefinitionSite],
+) -> None:
+    for item in facts.definitions:
+        definition = modeled.get(id(item.statement))
+        if definition is not None and definition.kind.id in definitions:
+            sites.append(
+                _DefinitionSite(
+                    module_name,
+                    definition,
+                    local[item.scope],
+                    frozenset(
+                        name
+                        for parameter in getattr(item.statement, "type_params", ())
+                        if isinstance(name := getattr(parameter, "name", None), str)
+                    ),
+                    item.sequence,
+                )
+            )
+
+
+def _append_observed_uses(
+    facts: SyntaxFacts,
+    local: Mapping[SyntaxScope, _Scope],
+    external_definitions: ExternalDefinitions | None,
+    value_occurrences: list[tuple[_Scope, str, bool]],
+) -> None:
+    """Observe value-use hints in already collected AST occurrences.
+
+    No new use tracking or flow analysis is performed. The shared expression
+    index is cached by SyntaxFacts for all existing consumers.
     """
-    sites: list[_DefinitionSite] = []
-    roots: dict[str, _Scope] = {}
-    scopes: list[_Scope] = []
-    class_scopes: dict[int, _Scope] = {}
-    attributes: dict[str, set[str]] = {}
-    for module_name, (module, is_package) in modules.items():
-        ast_facts, modeled = syntax[module_name]
-        local: dict[SyntaxScope, _Scope] = {}
-        for lexical in ast_facts.scopes:
-            parent = local.get(lexical.parent) if lexical.parent is not None else None
-            scope_model = (
-                module if lexical.kind == "module" else modeled.get(id(lexical.node))
-            )
-            scope = _Scope(lexical.kind, parent, module_name, model=scope_model)
-            scope.globals.update(lexical.globals)
-            scope.nonlocals.update(lexical.nonlocals)
-            local[lexical] = scope
-            scopes.append(scope)
-            if lexical.kind == "module":
-                roots[module_name] = scope
-            if lexical.kind == "class" and scope_model is not None:
-                class_scopes[id(scope_model)] = scope
-        for item in ast_facts.definitions:
-            definition = modeled.get(id(item.statement))
-            if definition is not None and definition.kind.id in definitions:
-                sites.append(
-                    _DefinitionSite(
-                        module_name,
-                        definition,
-                        local[item.scope],
-                        frozenset(
-                            name
-                            for parameter in getattr(item.statement, "type_params", ())
-                            if isinstance(name := getattr(parameter, "name", None), str)
-                        ),
-                        item.sequence,
-                    )
-                )
-        for event in ast_facts.events:
-            if event.kind == "attribute_write" or event.kind == "attribute_delete":
-                attributes.setdefault(module_name, set()).add(event.name)
-                continue
-            # Incomplete source inspection never calls relationship analysis.
-            # A direct parse has a Model for every supported statement.
-            statement = modeled.get(id(event.statement))
-            if statement is None:
-                continue
-            scope = local[event.scope]
-            value: _BaseBinding | None
-            if event.kind in {"import", "star"}:
-                assert event.imported is not None
-                written, imported = event.imported
-                if written is None:
-                    value = _UnknownBinding("unresolved_import")
-                elif written.startswith("."):
-                    level = len(written) - len(written.lstrip("."))
-                    source = _resolved_module(
-                        module_name,
-                        is_package=is_package,
-                        level=level,
-                        module=written[level:] or None,
-                    )
-                    value = (
-                        (source, imported)
-                        if source is not None
-                        else _UnknownBinding("unresolved_import")
-                    )
-                else:
-                    # Plain `import pkg.a` binds `pkg`, but retains the full
-                    # path explicitly named by the AST. `import pkg.a as a`
-                    # instead binds `a` directly to the complete module.
-                    if event.explicit_module is not None:
-                        path = explicit_import_path(event)
-                        assert path is not None
-                        segments = path.split(".")
-                        value = _ExplicitModulePath(segments[0], tuple(segments[1:]))
-                    else:
-                        value = (written, imported)
-                if event.kind == "star":
-                    scope.stars.append(
-                        _BindingEvent(
-                            "*",
-                            value,
-                            event.sequence,
-                            event.conditional,
-                            operation="star",
-                        )
-                    )
-                    continue
-            elif (
-                event.kind == "definition"
-                and statement.kind.id == "model.definition.class"
-                and event.node is event.statement
+    expression_scopes, _, type_positions = facts.expression_scopes(
+        cast(ast.Module, facts.root.node)
+    )
+    matcher = (
+        _ExternalStructures.for_facts(facts, external_definitions)
+        if external_definitions is not None
+        else None
+    )
+    # Collect registered Generic slices first, then mark their descendants
+    # in one walk. No reference needs to search an arbitrarily deep ancestry.
+    generic_slices: set[ast.AST] = set()
+    if matcher is not None:
+        for reference, parent in facts.references:
+            if (
+                isinstance(parent, ast.Subscript)
+                and parent.value is reference
+                and matcher.generic_mapping(reference) is not None
             ):
-                value = statement
-            else:
-                value = _UnknownBinding(
-                    "lexical_parameter"
-                    if event.kind == "parameter"
-                    else "unknown_written_value"
-                )
-            scope.events.setdefault(event.name, []).append(
-                _BindingEvent(
-                    event.name,
-                    value,
-                    event.sequence,
-                    event.conditional,
-                    source=statement,
-                    operation="definition" if event.kind == "parameter" else event.kind,
-                    declaration=event.kind == "definition"
-                    and event.node is event.statement,
-                    repeatable=event.repeatable,
+                generic_slices.add(parent.slice)
+    generic_arguments: set[ast.AST] = set()
+    if generic_slices:
+        pending = [(facts.root.node, False)]
+        while pending:
+            node, inside_generic = pending.pop()
+            inside_generic = inside_generic or node in generic_slices
+            if inside_generic:
+                generic_arguments.add(node)
+            pending.extend(
+                (child, inside_generic) for child in ast.iter_child_nodes(node)
+            )
+    for reference, parent in facts.references:
+        root_name = _reference_root(reference)
+        if root_name is None or not isinstance(root_name.ctx, ast.Load):
+            continue
+        if reference in type_positions:
+            continue
+        if matcher is not None:
+            if (
+                isinstance(parent, ast.Call)
+                and parent.func is reference
+                and matcher.mapping(parent) is not None
+            ):
+                continue
+            if (
+                isinstance(parent, ast.Subscript)
+                and parent.value is reference
+                and matcher.generic_mapping(reference) is not None
+            ):
+                continue
+            # Registered Generic arguments are interface syntax, not values.
+            if reference in generic_arguments:
+                continue
+        current = local.get(expression_scopes.get(reference, facts.root))
+        if current is not None:
+            value_occurrences.append(
+                (
+                    current,
+                    root_name.id,
+                    isinstance(parent, ast.Call) and parent.func is reference,
                 )
             )
 
-    # Lexical global/nonlocal declarations apply to an entire scope. Use the
-    # shared binding-owner policy against the original lexical name inventory:
-    # moving an event must not change another declaration's ownership decision.
+
+def _imported_binding(
+    event: SyntaxEvent,
+    module_name: str,
+    *,
+    is_package: bool,
+) -> _BaseBinding:
+    """Resolve only the import path written in the Source, not its contents."""
+    assert event.imported is not None
+    written, imported = event.imported
+    if written is None:
+        return _UnknownBinding("unresolved_import")
+    if written.startswith("."):
+        level = len(written) - len(written.lstrip("."))
+        source = _resolved_module(
+            module_name,
+            is_package=is_package,
+            level=level,
+            module=written[level:] or None,
+        )
+        return (
+            (source, imported)
+            if source is not None
+            else _UnknownBinding("unresolved_import")
+        )
+    # `import pkg.a` binds `pkg`, but carries its explicit suffix; an alias
+    # binds directly to the imported complete module instead.
+    if event.explicit_module is not None:
+        path = explicit_import_path(event)
+        assert path is not None
+        segments = path.split(".")
+        return _ExplicitModulePath(segments[0], tuple(segments[1:]))
+    return (written, imported)
+
+
+def _append_written_events(
+    module_name: str,
+    is_package: bool,
+    facts: SyntaxFacts,
+    modeled: Mapping[int, Model],
+    local: Mapping[SyntaxScope, _Scope],
+    attributes: dict[str, set[str]],
+) -> None:
+    """Record operations already seen in AST; never reject their use."""
+    for event in facts.events:
+        if event.kind == "attribute_write" or event.kind == "attribute_delete":
+            attributes.setdefault(module_name, set()).add(event.name)
+            continue
+        if event.kind == "star":
+            # Keep the import Model, but infer no implicit bindings from `*`.
+            continue
+        # Incomplete inspection never reaches relationship analysis.
+        statement = modeled.get(id(event.statement))
+        if statement is None:
+            continue
+        scope = local[event.scope]
+        value: _BaseBinding | None
+        if event.kind == "import":
+            value = _imported_binding(event, module_name, is_package=is_package)
+        elif (
+            event.kind == "definition"
+            and statement.kind.id == "model.definition.class"
+            and event.node is event.statement
+        ):
+            value = statement
+        else:
+            value = _UnknownBinding(
+                "lexical_parameter"
+                if event.kind == "parameter"
+                else "unknown_written_value"
+            )
+        scope.events.setdefault(event.name, []).append(
+            _BindingEvent(
+                event.name,
+                value,
+                event.sequence,
+                event.conditional,
+                source=statement,
+                operation="definition" if event.kind == "parameter" else event.kind,
+                declaration=event.kind == "definition"
+                and event.node is event.statement,
+                repeatable=event.repeatable,
+            )
+        )
+
+
+def _redistribute_declared_events(
+    scopes: list[_Scope], roots: Mapping[str, _Scope]
+) -> None:
+    """Honor global/nonlocal against the *original* lexical name inventory."""
     local_names = {scope: frozenset(scope.events) for scope in scopes}
 
     def originally_binds(scope: _Scope, name: str) -> bool:
@@ -597,7 +648,7 @@ def _collect_facts(
                 continue
             owner = binding_owner(scope, name, roots[scope.module], originally_binds)
             if owner is scope and name in scope.nonlocals:
-                # An unresolved nonlocal is not mapped to an invented owner.
+                # Do not invent an owner for an unresolved nonlocal declaration.
                 scope.events[name] = entries
                 continue
             owner.events.setdefault(name, []).extend(
@@ -613,7 +664,70 @@ def _collect_facts(
                 )
                 for event in entries
             )
-        # Other scopes remain independent, even if names have the same spelling.
+
+
+def _mark_observed_value_uses(
+    occurrences: list[tuple[_Scope, str, bool]], roots: Mapping[str, _Scope]
+) -> None:
+    """Record only observable uses after global/nonlocal ownership is known."""
+    for scope, name, direct_call in occurrences:
+        for owner in visible_owners(
+            scope, name, roots[scope.module], lambda current, key: key in current.events
+        ):
+            if name in owner.events or (
+                owner.kind == "module" and name in BUILTIN_NAMES
+            ):
+                if (
+                    direct_call
+                    and owner.kind == "module"
+                    and name in BUILTIN_NAMES
+                    and name not in owner.events
+                ):
+                    break  # A virtual builtin call is not a first-class value use.
+                owner.value_uses.add(name)
+                break
+
+
+def _collect_facts(
+    modules: dict[str, tuple[Model, bool]],
+    syntax: Mapping[str, tuple[SyntaxFacts, Mapping[int, Model]]],
+    *,
+    definitions: frozenset[str] = frozenset({"model.definition.class"}),
+    external_definitions: ExternalDefinitions | None = None,
+) -> _FactIndex:
+    """Project collected AST facts onto Model scopes without rescanning."""
+    sites: list[_DefinitionSite] = []
+    roots: dict[str, _Scope] = {}
+    scopes: list[_Scope] = []
+    class_scopes: dict[int, _Scope] = {}
+    attributes: dict[str, set[str]] = {}
+    value_occurrences: list[tuple[_Scope, str, bool]] = []
+    targets = (
+        frozenset(
+            mapping.target.dotted
+            for mapping in (
+                *external_definitions.mappings,
+                *external_definitions.type_mappings,
+                *external_definitions.generic_mappings,
+            )
+        )
+        if external_definitions is not None
+        else frozenset()
+    )
+    for module_name, (module, is_package) in modules.items():
+        facts, modeled = syntax[module_name]
+        local = _make_scopes(
+            module_name, module, facts, modeled, roots, scopes, class_scopes
+        )
+        _append_definition_sites(module_name, facts, modeled, local, definitions, sites)
+        _append_observed_uses(facts, local, external_definitions, value_occurrences)
+        _append_written_events(
+            module_name, is_package, facts, modeled, local, attributes
+        )
+
+    # Both operations use the same collected events, never a second AST pass.
+    _redistribute_declared_events(scopes, roots)
+    _mark_observed_value_uses(value_occurrences, roots)
     for scope in scopes:
         for entries in scope.events.values():
             entries.sort(key=lambda event: event.sequence)
@@ -623,4 +737,5 @@ def _collect_facts(
         tuple(scopes),
         class_scopes,
         {module: frozenset(paths) for module, paths in attributes.items()},
+        targets,
     )

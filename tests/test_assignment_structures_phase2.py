@@ -164,7 +164,7 @@ class AssignmentStructureTests(unittest.TestCase):
             )
             self.assertEqual(
                 child_reference.binding,
-                shikake.BindingState("stable", True, False),
+                shikake.BindingState("stable", True, False, False),
             )
 
     def test_augmented_assignment_contract_is_unmodified(self) -> None:
@@ -212,7 +212,7 @@ class AssignmentStructureTests(unittest.TestCase):
                 kinds
             )
         )
-        self.assertEqual(len(shikake.kind_index().all_kinds()), 143)
+        self.assertEqual(len(shikake.kind_index().all_kinds()), 142)
 
 
 if __name__ == "__main__":

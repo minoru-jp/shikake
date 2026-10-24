@@ -40,9 +40,7 @@ class ConditionalExpressionBindingTests(unittest.TestCase):
                 self.assertEqual(
                     self._binding(source),
                     shikake.BindingState(
-                        "unstable",
-                        source.startswith(("[", "{", "((")),
-                        False,
+                        "unstable", source.startswith(("[", "{", "((")), False, False
                     ),
                 )
 
@@ -57,17 +55,18 @@ class ConditionalExpressionBindingTests(unittest.TestCase):
         for source in samples:
             with self.subTest(source=source):
                 self.assertEqual(
-                    self._binding(source), shikake.BindingState("stable", False, False)
+                    self._binding(source),
+                    shikake.BindingState("stable", False, False, False),
                 )
 
     def test_conditions_flow_through_lambda_defaults_but_not_lambda_body(self) -> None:
         self.assertEqual(
             self._binding("flag and (lambda a=(B := object): a)"),
-            shikake.BindingState("unstable", False, False),
+            shikake.BindingState("unstable", False, False, False),
         )
         self.assertEqual(
             self._binding("g = lambda: (B := object)\nB = object"),
-            shikake.BindingState("stable", False, False),
+            shikake.BindingState("stable", False, False, False),
         )
 
     def test_expression_conditionality_is_shared_with_base_binding(self) -> None:
@@ -79,7 +78,7 @@ class ConditionalExpressionBindingTests(unittest.TestCase):
             package = shikake.parse_package(directory, analyses={"inheritance"})
         (reference,) = package.base_references
         self.assertEqual(
-            reference.binding, shikake.BindingState("unstable", False, False)
+            reference.binding, shikake.BindingState("unstable", False, False, False)
         )
 
     def test_shared_syntax_events_mark_optional_operations(self) -> None:

@@ -71,6 +71,7 @@ class DocumentationPolicyCanonicalTests(unittest.TestCase):
                 "docs/STATUS.md",
                 "CHANGELOG.md",
                 "docs/api_reference/INDEX.md",
+                "docs/api_reference/external.md",
                 "docs/DOCUMENTATION_POLICY.md",
                 "LICENSE",
             },

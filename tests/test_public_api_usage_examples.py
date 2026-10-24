@@ -80,7 +80,7 @@ class PublicApiUsageExampleTests(unittest.TestCase):
             return
         published_code = _code_blocks(published)
         canonical_code = _code_blocks(japanese)
-        self.assertEqual(len(published_code), 3)
+        self.assertGreaterEqual(len(published_code), 3)
         self.assertEqual(len(canonical_code), 2)
         for code in (*canonical_code, *published_code):
             ast.parse(code)

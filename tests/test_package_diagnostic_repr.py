@@ -10,7 +10,7 @@ import shikake
 class PackageDiagnosticReprTests(unittest.TestCase):
     def test_relationship_counts_without_expanding_facts(self) -> None:
         root = shikake.parse_source("class A: pass\n")
-        state = shikake.BindingState("stable", False, False)
+        state = shikake.BindingState("stable", False, False, False)
         binding = shikake.NameBinding("example", root, "name", state)
         base = shikake.BaseReference(root, root, (), None)
         candidate = shikake.OverrideCandidate(

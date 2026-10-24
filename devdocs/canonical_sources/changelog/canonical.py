@@ -17,8 +17,42 @@ class CHANGELOG:
     `devdocs/canonical_sources/development_history/comments.py`、
     `devdocs/canonical_sources/development_history/builtins.py` に記録します。
 
-    `0.0.1` は2026年10月23日付の初回Alphaリリース、`0.0.2` は2026年10月24日付のリリースとして記録します。`0.0.3` は2026年10月24日付の公開準備済み変更として記録し、PyPI・GitHubへの公開完了とは区別します。
+    `0.0.1` は2026年10月23日付の初回Alphaリリース、`0.0.2` は2026年10月24日付のリリースとして記録します。`0.0.3` は2026年10月24日の旧版として記録します。`0.0.4` は2026年10月25日の公開版として記録し、実際のPyPI・GitHubアップロードは別途行います。
     変更項目は公開APIと利用者向け機能の範囲を示します。"""
+
+    class VERSION_0_0_4:
+        """shikake v0.0.4（2026年10月25日公開版）。外部インターフェースを任意のModel化へ整理し、束縛4軸、ImportPolicy、Generator Feature、解析性能と構文スコープを更新した。後方互換性は提供しない。"""
+
+        title @= "0.0.4（2026-10-25）"
+
+        class ADDED:
+            """- **外部Call・Type・Generic**：明示的importから、直接関数Call、Type参照、固定長のGeneric適用をShikumi宣言またはビルダーで登録できる。同じ名前に複数の使用形式を独立に登録できる。
+            - **識別子4軸**：`BindingState` に `may_value_use` と `introduction="external"` を追加。登録済みInterface構文による利用と通常の値参照を区別する。観測は軽量で、Falseは操作が存在しないことの証明ではない。
+            - **委譲ImportPolicy**：`default`・`allow`・`deny`・`allow_star_import=False` で利用側が許可・禁止を指定できる。指定なしは無検査、deny優先。モジュール指定は当該モジュールと子モジュールに適用し、`module:Name` は完全一致、`from M import N` はdeny側で `M.N` も照合する。star importはポリシー指定時には明示許可が必要。"""
+
+            title @= "追加"
+
+        class CHANGED:
+            """- **外部Interfaceの採否を利用側へ**：外部名の値使用・再束縛・削除、未登録の操作、引数不一致だけでSourceを拒絶しない。専用Modelの条件が満たせない場合は通常Call・Subscript・参照のModelに戻す。外部Callの引数照合をModelの消費前に完了し、部分消費による `KeyError` を解消した。
+            - **字句スコープの判定**：外部Interfaceと組み込みCollectionの認定で、明確なローカル束縛・仮引数・lambda・内包表記による隠蔽を考慮する。lambdaの既定値、内包表記の最初のiterableは外側のスコープで評価し、クラス本体内の内包表記の本体はクラス局所名を参照しない。型推論や任意の名前追跡器は追加しない。
+            - **star importの非推論**：star importは構文としてModel化するが、暗黙の名前導入や既存の識別子への競合を4軸・組み込みCollection・継承候補に反映しない。明示的な通常importの扱いは維持する。
+            - **Generatorの一般化**：`model.definition.generator` を廃止。generator関数もメソッドも通常の `model.definition.function` / `.method` に `generator` Featureを付与する。`async` と併用可能であり、Structureは通常の関数・メソッドと同じ。
+            - **解析性能と重複**：ASTの構文コンテキストを一度収集し、型位置、式スコープ、Genericの引数領域、外部Interfaceおよび組み込みCollectionの認定に再利用する。深い式の反復的な祖先走査を減らし、4つの解析APIの共通前処理とASTブロック列挙を整理した。
+            - **Python警告の制御**：解析中の警告を捕捉・抑制・`InspectionIssue` に変換しない。ホストの `warnings` 設定に従い、例外化によりPython構文検証が失敗すれば通常の構文エラー経路で扱う。"""
+
+            title @= "変更（破壊的変更を含む）"
+
+        class REMOVED:
+            """- 旧3モードの `import_policy`、`allowed_modules`、登録済み外部構造の使用禁止・予約名保護と、旧外部使用違反の例外・診断経路を削除。`ExternalModelingError` も公開APIから削除した。
+            - `BindingState` の3引数構築は廃止。Generator専用Kind／Structureは残さない。警告専用の診断区分と重大度フィールドは最終APIに存在しない。旧互換レイヤーは提供しない。"""
+
+            title @= "削除・移行事項"
+
+        class VERIFIED:
+            """- stage9ではPython 3.13.5の回帰テストに失敗なし、RuffとBasedPyrightはエラーなし。
+            - stage8のレビューにてPython 3.11〜3.15およびfree-threaded版3.14で全テスト成功、分岐カバレッジ95%、実コード9,892ファイルの検証でクラッシュ0件との報告を受けた。stage9固有の全バージョン再検証はまだ記録していない。"""
+
+            title @= "検証記録"
 
     class VERSION_0_0_3:
         """v0.0.3の公開準備版。組み込み名を既存の束縛3軸へ統合し、Collection Modelを一般化します。公開Model契約と既存の束縛情報に破壊的変更を含みます。"""

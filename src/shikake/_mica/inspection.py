@@ -15,16 +15,10 @@ from typing import Literal
 
 from shikake.external import ExternalDefinitions
 
-from .ast_facts import SyntaxFacts, collect_syntax_facts
+from .ast_facts import SyntaxFacts
 from .base_references import BaseReference
-from .builtin_collections import BuiltinCollectionRecognition
 from .builtin_names import BUILTIN_NAMES
-from .external_structures import ExternalModelingError, _ExternalStructures
-from .import_policy import (
-    ImportPolicy,
-    _assert_import_policy,
-    _validated_import_options,
-)
+from .import_policy import ImportPolicy, ImportPolicyError
 from .kinds import KindIndex
 from .model import Model, ModelFactory, SourceSpan
 from .package import (
@@ -39,15 +33,21 @@ from .package import (
 from .parser import (
     SyntaxValidation,
     UnsupportedSyntaxError,
-    _Builder,
-    _compile_check,
+    _build_module,
     _external_settings,
+    _modeling_context,
+    _ModelingContext,
+    _prepare_source,
     _span,
     _validated_syntax_validation,
 )
 from .relation_facts import BindingState, NameBinding, _collect_facts
 
-IssueCategory = Literal["unsupported_syntax", "syntax_error", "external_definition"]
+IssueCategory = Literal[
+    "unsupported_syntax",
+    "syntax_error",
+    "import_policy",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,12 +79,12 @@ class InspectionIssue:
 
 @dataclass(frozen=True, slots=True)
 class SourceInspection:
-    """Model is None for syntax errors or file-wide external violations."""
+    """Model is None when syntax validation fails."""
 
     model: Model | None
     issues: tuple[InspectionIssue, ...]
     name_bindings: tuple[NameBinding, ...] = ()
-    _builtin_star_names: frozenset[str] = field(
+    _builtin_value_names: frozenset[str] = field(
         default_factory=frozenset, repr=False, compare=False
     )
     _binding_index: dict[tuple[_ModelIdentity, str], tuple[NameBinding, ...]] | None = (
@@ -118,7 +118,12 @@ class SourceInspection:
                     "<source>",
                     scope,
                     name,
-                    BindingState("builtin", name in self._builtin_star_names, False),
+                    BindingState(
+                        "builtin",
+                        False,
+                        False,
+                        name in self._builtin_value_names,
+                    ),
                     "module",
                 ),
             )
@@ -201,59 +206,14 @@ def _syntax_issue(
     )
 
 
-def _local_external_errors(
-    tree: ast.Module,
-) -> tuple[
-    dict[int, list[ExternalModelingError]],
-    Callable[[ExternalModelingError, ast.AST], None],
-]:
-    """Prepare a source-ordered sink for errors scoped to one statement.
-
-    Descend iteratively so deep ASTs do not exhaust Python's call stack.
-    Structural errors without an enclosing statement must remain fatal.
-    """
-    enclosing: dict[int, ast.stmt] = {}
-    pending: list[tuple[ast.AST, ast.stmt | None, ast.AST | None]] = [
-        (tree, None, None)
-    ]
-    while pending:
-        node, statement, parent = pending.pop()
-        # An elif has no separate statement Model: its enclosing ast.If
-        # is flattened into one branch Model. Skip that outer statement.
-        is_elif = (
-            isinstance(node, ast.If)
-            and isinstance(parent, ast.If)
-            and len(parent.orelse) == 1
-            and parent.orelse[0] is node
-            and parent.col_offset == node.col_offset
-        )
-        if isinstance(node, ast.stmt) and not is_elif:
-            statement = node
-        if statement is not None:
-            enclosing[id(node)] = statement
-        pending.extend((child, statement, node) for child in ast.iter_child_nodes(node))
-
-    errors: dict[int, list[ExternalModelingError]] = {}
-
-    def record(error: ExternalModelingError, node: ast.AST) -> None:
-        statement = enclosing.get(id(node))
-        if statement is None:
-            raise error
-        errors.setdefault(id(statement), []).append(error)
-
-    return errors, record
-
-
 def _inspect_tree(
     tree: ast.Module,
     *,
     index: KindIndex,
     filename: str,
     name: str,
-    external: _ExternalStructures | None = None,
+    context: _ModelingContext,
     statement_models: dict[int, Model] | None = None,
-    local_external_errors: dict[int, list[ExternalModelingError]] | None = None,
-    syntax: SyntaxFacts | None = None,
 ) -> SourceInspection:
     issues: list[InspectionIssue] = []
 
@@ -273,53 +233,23 @@ def _inspect_tree(
             )
         )
 
-    def record_external(error: ExternalModelingError, skipped: ast.AST) -> None:
-        issues.append(
-            InspectionIssue(
-                category="external_definition",
-                filename=filename,
-                node_type=error.node_type,
-                message=str(error),
-                line=error.line,
-                column=error.column,
-                skipped_node_type=type(skipped).__name__,
-                skipped_span=_span(skipped),
-                code=error.code,
-                details=error.details,
-            )
-        )
-
-    builder = _Builder(
-        index,
-        collections=BuiltinCollectionRecognition(
-            tree,
-            syntax
-            if syntax is not None
-            else collect_syntax_facts(tree, include_references=False),
-        ),
-        on_unsupported=record,
-        on_external=record_external,
-        local_external_errors={
-            key: tuple(value) for key, value in (local_external_errors or {}).items()
-        },
-        external=external,
+    model, built_statements = _build_module(
+        tree, index, context, name=name, on_unsupported=record
     )
-    model = builder.module(tree, name=name)
     if statement_models is not None:
-        statement_models.update(builder.statement_models)
+        statement_models.update(built_statements)
     return SourceInspection(model, tuple(issues))
 
 
-def _external_issue(error: ExternalModelingError, filename: str) -> InspectionIssue:
+def _import_policy_issue(error: ImportPolicyError, filename: str) -> InspectionIssue:
     return InspectionIssue(
-        "external_definition",
+        "import_policy",
         filename,
         error.node_type,
         str(error),
         error.line,
         error.column,
         code=error.code,
-        details=error.details,
     )
 
 
@@ -329,9 +259,8 @@ def inspect_source(
     filename: str = "<source>",
     index: KindIndex | None = None,
     definitions: ModuleType | ExternalDefinitions | None = None,
-    import_policy: ImportPolicy = "unrestricted",
-    allowed_modules: tuple[str, ...] = (),
     syntax_validation: SyntaxValidation = "compile",
+    import_policy: ImportPolicy | None = None,
 ) -> SourceInspection:
     """Return the modelable portions of one source plus omission diagnostics.
 
@@ -340,62 +269,49 @@ def inspect_source(
     visited. A syntax error prevents modeling this source, but is returned as
     a diagnostic instead of raising SyntaxError.
     """
-    selected_modules = _validated_import_options(import_policy, allowed_modules)
     _validated_syntax_validation(syntax_validation)
     resolved_index, prepared = _external_settings(definitions, index)
-    try:
-        tree = ast.parse(source, filename=filename, type_comments=False)
-    except SyntaxError as error:
-        return SourceInspection(None, (_syntax_issue(error, filename),))
-    try:
-        _compile_check(tree, filename, syntax_validation)
-    except SyntaxError as error:
-        return SourceInspection(
-            None, (_syntax_issue(error, filename, compiler_error=True),)
-        )
-    try:
-        _assert_import_policy(
-            tree,
-            prepared,
-            import_policy=import_policy,
-            allowed_modules=selected_modules,
-        )
-        local_errors: dict[int, list[ExternalModelingError]] = {}
-        matcher = None
-        syntax = collect_syntax_facts(tree, include_references=prepared is not None)
-        if prepared is not None:
-            local_errors, record_local = _local_external_errors(tree)
-            matcher = _ExternalStructures.for_facts(
-                syntax, prepared, on_local_error=record_local
+    prepared_source = _prepare_source(
+        source, filename, syntax_validation, import_policy
+    )
+    if prepared_source.error is not None:
+        error = prepared_source.error
+        issue = (
+            _import_policy_issue(error, filename)
+            if isinstance(error, ImportPolicyError)
+            else _syntax_issue(
+                error, filename, compiler_error=prepared_source.phase == "compile"
             )
-        statement_models: dict[int, Model] = {}
-        result = _inspect_tree(
-            tree,
-            index=resolved_index,
-            filename=filename,
-            name="<source>",
-            external=matcher,
-            statement_models=statement_models,
-            local_external_errors=local_errors,
-            syntax=syntax,
         )
-        # Do not expose a partial binding index as if it were complete. Reuse
-        # the same lexical fact index as package analysis, with no relation pass.
-        if not result.complete or result.model is None:
-            return result
-        facts = _collect_facts(
-            {"<source>": (result.model, False)},
-            {"<source>": (syntax, statement_models)},
-            definitions=frozenset(),
-        )
-        return SourceInspection(
-            result.model,
-            result.issues,
-            facts.bindings(),
-            frozenset(name for module, name in facts.builtin_star_conflicts()),
-        )
-    except ExternalModelingError as error:
-        return SourceInspection(None, (_external_issue(error, filename),))
+        return SourceInspection(None, (issue,))
+    tree = prepared_source.tree
+    assert tree is not None
+    context = _modeling_context(tree, prepared)
+    statement_models: dict[int, Model] = {}
+    result = _inspect_tree(
+        tree,
+        index=resolved_index,
+        filename=filename,
+        name="<source>",
+        context=context,
+        statement_models=statement_models,
+    )
+    # Do not expose a partial binding index as if it were complete. Reuse
+    # the same lexical fact index as package analysis, with no relation pass.
+    if not result.complete or result.model is None:
+        return result
+    facts = _collect_facts(
+        {"<source>": (result.model, False)},
+        {"<source>": (context.syntax, statement_models)},
+        definitions=frozenset(),
+        external_definitions=prepared,
+    )
+    return SourceInspection(
+        result.model,
+        result.issues,
+        facts.bindings(),
+        frozenset(name for module, name in facts.builtin_value_uses()),
+    )
 
 
 def inspect_package(
@@ -406,9 +322,8 @@ def inspect_package(
     definitions: ModuleType | ExternalDefinitions | None = None,
     include: Callable[[Path, bool], bool] | None = None,
     extensions: tuple[str, ...] = (".py",),
-    import_policy: ImportPolicy = "unrestricted",
-    allowed_modules: tuple[str, ...] = (),
     syntax_validation: SyntaxValidation = "compile",
+    import_policy: ImportPolicy | None = None,
 ) -> PackageInspection:
     """Inspect each module independently; keep other modules on syntax errors.
 
@@ -419,7 +334,6 @@ def inspect_package(
     omitted definitions may otherwise produce misleading matches.
     """
     selected = _selected_analyses(analyses)
-    selected_modules = _validated_import_options(import_policy, allowed_modules)
     _validated_syntax_validation(syntax_validation)
     folder, paths = _package_paths(directory, include=include, extensions=extensions)
     resolved_index, prepared = _external_settings(definitions, index)
@@ -428,60 +342,52 @@ def inspect_package(
     issues: list[InspectionIssue] = []
     for path in paths:
         module_name, is_init = _module_identity(folder, path)
-        try:
-            tree = ast.parse(path.read_bytes(), filename=str(path), type_comments=False)
-        except SyntaxError as error:
-            issues.append(_syntax_issue(error, str(path)))
-            continue
-        try:
-            _compile_check(tree, str(path), syntax_validation)
-        except SyntaxError as error:
-            issues.append(_syntax_issue(error, str(path), compiler_error=True))
-            continue
-        try:
-            _assert_import_policy(
-                tree,
-                prepared,
-                import_policy=import_policy,
-                allowed_modules=selected_modules,
-            )
-            syntax = collect_syntax_facts(tree, include_references=prepared is not None)
-            local_errors: dict[int, list[ExternalModelingError]] = {}
-            matcher = None
-            if prepared is not None:
-                local_errors, record_local = _local_external_errors(tree)
-                matcher = _ExternalStructures.for_facts(
-                    syntax, prepared, on_local_error=record_local
+        prepared_source = _prepare_source(
+            path.read_bytes(), str(path), syntax_validation, import_policy
+        )
+        if prepared_source.error is not None:
+            error = prepared_source.error
+            issues.append(
+                _import_policy_issue(error, str(path))
+                if isinstance(error, ImportPolicyError)
+                else _syntax_issue(
+                    error,
+                    str(path),
+                    compiler_error=prepared_source.phase == "compile",
                 )
-            statement_models: dict[int, Model] = {}
-            result = _inspect_tree(
-                tree,
-                index=resolved_index,
-                filename=str(path),
-                name=module_name,
-                external=matcher,
-                statement_models=statement_models,
-                local_external_errors=local_errors,
-                syntax=syntax,
             )
-        except ExternalModelingError as error:
-            issues.append(_external_issue(error, str(path)))
             continue
+        tree = prepared_source.tree
+        assert tree is not None
+        context = _modeling_context(tree, prepared)
+        statement_models: dict[int, Model] = {}
+        result = _inspect_tree(
+            tree,
+            index=resolved_index,
+            filename=str(path),
+            name=module_name,
+            context=context,
+            statement_models=statement_models,
+        )
         issues.extend(result.issues)
         if result.model is None:
             raise AssertionError("AST-based inspection must produce a module model")
         modules[module_name] = (result.model, is_init)
-        source_facts[module_name] = (syntax, statement_models)
+        source_facts[module_name] = (context.syntax, statement_models)
 
     root = ModelFactory(resolved_index).make(
         "model.package",
         name=folder.name,
         modules=tuple(module for module, _ in modules.values()),
     )
-    builtin_stars: set[tuple[str, str]] = set()
+    builtin_values: set[tuple[str, str]] = set()
     candidates, bases, bindings = (
         _analyze_package_facts(
-            modules, selected, source_facts, builtin_star_sink=builtin_stars
+            modules,
+            selected,
+            source_facts,
+            builtin_value_sink=builtin_values,
+            external_definitions=prepared,
         )
         if not issues
         else ((), (), ())
@@ -493,7 +399,7 @@ def inspect_package(
             bases,
             selected if not issues else frozenset(),
             bindings,
-            _builtin_star_conflicts=frozenset(builtin_stars),
+            _builtin_value_uses=frozenset(builtin_values),
             _complete=not issues,
         ),
         tuple(issues),

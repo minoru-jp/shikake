@@ -38,34 +38,31 @@ def definition(root: Model, name: str) -> Model:
 
 
 class GeneratorSubjectTests(unittest.TestCase):
-    def test_generator_is_independent_of_function_and_method(self) -> None:
+    def test_generator_is_function_or_method_with_feature(self) -> None:
         index = shikake.kind_index()
-        self.assertEqual(len(index.all_kinds()), 143)
-        self.assertTrue(index.is_a("model.definition.generator", "model.definition"))
-        self.assertFalse(
-            index.is_a("model.definition.generator", "model.definition.function")
+        self.assertEqual(len(index.all_kinds()), 142)
+        self.assertNotIn(
+            "model.definition.generator", {kind.id for kind in index.all_kinds()}
         )
-        self.assertFalse(
-            index.is_a("model.definition.generator", "model.definition.method")
+        self.assertTrue(
+            index.is_a("model.definition.method", "model.definition.function")
         )
-        self.assertEqual(
-            tuple(
-                c.role
-                for c in index.require_structure("model.definition.generator").parts
-            ),
-            tuple(
-                c.role
-                for c in index.require_structure("model.definition.function").parts
-            ),
+        self.assertIs(
+            index.require_structure("model.definition.method"),
+            index.require_structure("model.definition.function"),
         )
-        self.assertEqual(len({k.id for k in index.all_kinds()}), 143)
+        index.validate_features("model.definition.function", ("generator",))
+        index.validate_features("model.definition.method", ("async", "generator"))
+        with self.assertRaises(ValueError):
+            index.validate_features("model.value.named", ("generator",))
 
     def test_sample_generator_kind_and_yield_operands(self) -> None:
         source = SAMPLE.read_text(encoding="utf-8")
         self.assertTrue(shikake.inspect_source(source).complete)
         root = shikake.parse_source(source)
         filtered = definition(root, "filtered_rows")
-        self.assertEqual(filtered.kind.id, "model.definition.generator")
+        self.assertEqual(filtered.kind.id, "model.definition.function")
+        self.assertEqual(filtered.features, ("generator",))
         self.assertEqual(filtered.get("name"), "filtered_rows")
         self.assertEqual(len(nodes(filtered, "parameters")), 2)
         self.assertEqual(len(nodes(filtered, "decorators")), 0)
@@ -81,7 +78,7 @@ class GeneratorSubjectTests(unittest.TestCase):
             child(child(delegated[0], "value"), "callee").get("name"), "fallback_rows"
         )
         self.assertEqual(
-            definition(root, "fallback_rows").kind.id, "model.definition.generator"
+            definition(root, "fallback_rows").kind.id, "model.definition.function"
         )
         self.assertEqual(
             definition(root, "make_factory").kind.id, "model.definition.function"
@@ -90,7 +87,7 @@ class GeneratorSubjectTests(unittest.TestCase):
             nodes(child(definition(root, "make_factory"), "body"), "statements")[
                 0
             ].kind.id,
-            "model.definition.generator",
+            "model.definition.function",
         )
         paused = definition(root, "paused")
         (yield_stmt,) = nodes(child(paused, "body"), "statements")
@@ -118,7 +115,8 @@ class GeneratorSubjectTests(unittest.TestCase):
         klass = definition(shikake.parse_source(SAMPLE.read_text()), "Ledger")
         members = nodes(child(klass, "body"), "statements")
         self.assertEqual([m.get("name") for m in members], ["entries", "count"])
-        self.assertEqual(members[0].kind.id, "model.definition.generator")
+        self.assertEqual(members[0].kind.id, "model.definition.method")
+        self.assertEqual(members[0].features, ("generator",))
         self.assertEqual(members[1].kind.id, "model.definition.method")
         self.assertEqual(
             child(nodes(child(members[0], "body"), "statements")[0], "value").kind.id,
@@ -143,13 +141,13 @@ class GeneratorSubjectTests(unittest.TestCase):
         root = shikake.parse_source(source)
         self.assertEqual(definition(root, "outer").kind.id, "model.definition.function")
         self.assertEqual(
-            definition(root, "unreachable").kind.id, "model.definition.generator"
+            definition(root, "unreachable").kind.id, "model.definition.function"
         )
         self.assertEqual(
             definition(root, "only_expression").kind.id, "model.definition.function"
         )
         self.assertEqual(
-            definition(root, "named_generator").kind.id, "model.definition.generator"
+            definition(root, "named_generator").kind.id, "model.definition.function"
         )
 
     def test_nested_definition_header_and_comprehension_outer_iterable(self) -> None:
@@ -165,12 +163,8 @@ class GeneratorSubjectTests(unittest.TestCase):
             "    return collected\n"
         )
         root = shikake.parse_source(source)
-        self.assertEqual(
-            definition(root, "outer").kind.id, "model.definition.generator"
-        )
-        self.assertEqual(
-            definition(root, "other").kind.id, "model.definition.generator"
-        )
+        self.assertEqual(definition(root, "outer").kind.id, "model.definition.function")
+        self.assertEqual(definition(root, "other").kind.id, "model.definition.function")
         nested = nodes(child(definition(root, "outer"), "body"), "statements")[0]
         self.assertEqual(nested.kind.id, "model.definition.function")
         (parameter,) = nodes(nested, "parameters")
@@ -199,10 +193,10 @@ class GeneratorSubjectTests(unittest.TestCase):
             pkg = shikake.parse_package(folder)
             self.assertEqual(len(pkg.override_candidates), 1)
             candidate = pkg.override_candidates[0]
-            self.assertEqual(candidate.method.kind.id, "model.definition.generator")
-            self.assertEqual(
-                candidate.base_method.kind.id, "model.definition.generator"
-            )
+            self.assertEqual(candidate.method.kind.id, "model.definition.method")
+            self.assertEqual(candidate.base_method.kind.id, "model.definition.method")
+            self.assertEqual(candidate.method.features, ("generator",))
+            self.assertEqual(candidate.base_method.features, ("generator",))
             self.assertEqual(pkg.overrides_for(candidate.method), (candidate,))
 
     @unittest.skipUnless(
@@ -215,7 +209,8 @@ class GeneratorSubjectTests(unittest.TestCase):
         self.assertFalse(partial.complete)
         assert partial.model is not None
         fn = nodes(partial.model, "body")[0]
-        self.assertEqual(fn.kind.id, "model.definition.generator")
+        self.assertEqual(fn.kind.id, "model.definition.function")
+        self.assertEqual(fn.features, ("generator",))
         self.assertEqual(
             [n.kind.id for n in nodes(child(fn, "body"), "statements")],
             ["model.statement.expression"] * 2,
@@ -226,8 +221,8 @@ class GeneratorSubjectTests(unittest.TestCase):
         async_generator = nodes(
             shikake.parse_source("async def f():\n    yield 1\n"), "body"
         )[0]
-        self.assertEqual(async_generator.kind.id, "model.definition.generator")
-        self.assertEqual(async_generator.features, ("async",))
+        self.assertEqual(async_generator.kind.id, "model.definition.function")
+        self.assertEqual(async_generator.features, ("async", "generator"))
 
     def test_trusted_example_behaves_as_expected_independently(self) -> None:
         scope = runpy.run_path(str(SAMPLE))

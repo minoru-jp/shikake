@@ -21,7 +21,7 @@ from shikake._mica.model import ModelFactory
 class IndependentStructureTests(unittest.TestCase):
     def test_sharing_does_not_imply_ancestry(self) -> None:
         index = kind_index()
-        self.assertEqual(len(index.all_kinds()), 143)
+        self.assertEqual(len(index.all_kinds()), 142)
         self.assertEqual(len(index.all_structures()), 62)
         add = index.require_structure("model.value.operation.addition")
         equal = index.require_structure("model.value.operation.comparison.equal")
@@ -31,13 +31,14 @@ class IndependentStructureTests(unittest.TestCase):
         self.assertFalse(
             index.is_a("model.value.operation.comparison.equal", "model.statement")
         )
-        self.assertEqual(
-            index.structure_of("model.definition.generator"),
+        self.assertNotIn(
+            "model.definition.generator", {k.id for k in index.all_kinds()}
+        )
+        self.assertIs(
+            index.structure_of("model.definition.method"),
             index.structure_of("model.definition.function"),
         )
-        self.assertFalse(
-            index.is_a("model.definition.generator", "model.definition.function")
-        )
+        index.validate_features("model.definition.method", ("generator",))
         self.assertNotIn(
             "model.value.operation.binary", {k.id for k in index.all_kinds()}
         )
@@ -125,7 +126,9 @@ class IndependentStructureTests(unittest.TestCase):
 
     def test_async_feature_keeps_the_ordinary_kind_and_structure(self) -> None:
         index = kind_index()
-        self.assertEqual([f.id for f in index.all_features()], ["async", "lazy"])
+        self.assertEqual(
+            [f.id for f in index.all_features()], ["async", "generator", "lazy"]
+        )
         factory = ModelFactory(index)
         block = factory.make("model.statement.block", statements=())
         definition = factory.make(
@@ -157,9 +160,9 @@ class IndependentStructureTests(unittest.TestCase):
         realizer = KindIndexRealizer()
         self.assertTrue(realizer.check(result.view).is_realizable)
         index = realizer.realize(result.view)
-        self.assertEqual(len(index.all_kinds()), 143)
+        self.assertEqual(len(index.all_kinds()), 142)
         self.assertEqual(len(index.all_structures()), 62)
-        self.assertEqual(len(index.all_features()), 2)
+        self.assertEqual(len(index.all_features()), 3)
 
 
 if __name__ == "__main__":

@@ -159,7 +159,7 @@ class SpecialStatementTests(unittest.TestCase):
         ):
             self.assertIn(expected, ids)
         kinds = shikake.kind_index().all_kinds()
-        self.assertEqual(len(kinds), 143)
+        self.assertEqual(len(kinds), 142)
         self.assertEqual(len(kinds), len({kind.id for kind in kinds}))
         inspected = shikake.inspect_source(source)
         assert inspected.model is not None

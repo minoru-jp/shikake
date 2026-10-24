@@ -44,7 +44,7 @@ class PackageRelationIndexTests(unittest.TestCase):
         self.assertIsNot(method, other_method)
         self.assertEqual(method, other_method)
 
-        stable = shikake.BindingState("stable", False, False)
+        stable = shikake.BindingState("stable", False, False, False)
         first = shikake.NameBinding("sample", owner, "x", stable)
         unrelated = shikake.NameBinding("sample", owner, "y", stable)
         second = shikake.NameBinding("sample", owner, "x", stable)
@@ -85,7 +85,10 @@ class PackageRelationIndexTests(unittest.TestCase):
     def test_lookup_does_not_rescan_fact_tuples(self) -> None:
         root = shikake.parse_source("answer = 1")
         binding = shikake.NameBinding(
-            "sample", root, "answer", shikake.BindingState("stable", False, False)
+            "sample",
+            root,
+            "answer",
+            shikake.BindingState("stable", False, False, False),
         )
         source = _CountingBindings((binding,))
         package = shikake.PackageModel(root, name_bindings=source)
@@ -98,7 +101,10 @@ class PackageRelationIndexTests(unittest.TestCase):
     def test_copies_pickle_and_replace_keep_identity_lookup_valid(self) -> None:
         root = shikake.parse_source("answer = 1")
         first = shikake.NameBinding(
-            "sample", root, "answer", shikake.BindingState("stable", False, False)
+            "sample",
+            root,
+            "answer",
+            shikake.BindingState("stable", False, False, False),
         )
         base = shikake.BaseReference(root, root, (), None)
         override = shikake.OverrideCandidate(root, root, root, root, "sample", "sample")

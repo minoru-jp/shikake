@@ -8,7 +8,7 @@ control-flow analysis could prove that write is not reached.
 from __future__ import annotations
 
 import ast
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 
 from .ast_facts import SyntaxFacts, SyntaxScope
 from .builtin_names import BUILTIN_NAMES
@@ -24,26 +24,14 @@ _BASE: Mapping[str, tuple[str, bool]] = {
 }
 
 
-def _target_names(node: ast.AST) -> set[str]:
-    found: set[str] = set()
-    pending = [node]
-    while pending:
-        current = pending.pop()
-        if isinstance(current, ast.Name):
-            found.add(current.id)
-        elif isinstance(current, (ast.Tuple, ast.List)):
-            pending.extend(current.elts)
-        elif isinstance(current, ast.Starred):
-            pending.append(current.value)
-    return found
-
-
 class BuiltinCollectionRecognition:
     """Check whole-lexical-scope names using the shared SyntaxFacts events."""
 
     def __init__(self, tree: ast.Module, facts: SyntaxFacts) -> None:
         self._root = facts.root
-        self._node_scopes, self._parents = facts.expression_scopes(tree)
+        self._node_scopes, _, _ = facts.expression_scopes(tree)
+        self._facts = facts
+        self._shadow_cache: dict[tuple[object, str], bool] = {}
         # Index lexical write names once; the owner query below is O(depth),
         # not O(number of prior writes) for every global/nonlocal occurrence.
         declarations: dict[SyntaxScope, set[str]] = {}
@@ -52,10 +40,9 @@ class BuiltinCollectionRecognition:
                 declarations.setdefault(event.scope, set()).add(event.name)
         self._declarations = declarations
         self._events: dict[int, set[str]] = {}
-        self._stars: set[int] = set()
+        self._non_import_events: dict[int, set[str]] = {}
         for event in facts.events:
             if event.kind == "star":
-                self._stars.add(id(event.scope))
                 continue
             if event.kind == "annotation" and event.scope.kind == "module":
                 continue
@@ -63,41 +50,59 @@ class BuiltinCollectionRecognition:
                 event.scope, event.name, self._root, self._locally_binds
             )
             self._events.setdefault(id(owner), set()).add(event.name)
+            if event.kind != "import":
+                self._non_import_events.setdefault(id(owner), set()).add(event.name)
 
     def _locally_binds(self, scope: SyntaxScope, name: str) -> bool:
         return name in self._declarations.get(scope, ())
 
     def _expression_shadows(self, node: ast.AST, name: str) -> bool:
-        """Do not mistake lambda/comprehension locals for builtins.
+        """Check cached expression-local captures without ancestor AST scans."""
+        frame = self._facts.expression_frame(node)
+        visited: list[tuple[object, str]] = []
+        result = False
+        while frame is not None:
+            key = (frame, name)
+            cached = self._shadow_cache.get(key)
+            if cached is not None:
+                result = cached
+                break
+            visited.append(key)
+            if name in frame.names:
+                result = True
+                break
+            frame = frame.parent
+        for key in visited:
+            self._shadow_cache[key] = result
+        return result
 
-        The shared lexical fact index deliberately does not model expression
-        scopes as named binding scopes. Treat their captures as shadowing
-        conservatively, including first-iterable false negatives.
+    def _visible_owners(self, node: ast.AST, name: str) -> Iterator[SyntaxScope]:
+        """Ignore class locals inside lambda/comprehension expression bodies.
+
+        Their outermost iterable and lambda defaults use the enclosing frame,
+        so class bindings remain visible there. This shares the existing
+        expression index without introducing a separate scope analysis.
         """
-        current = node
-        while current in self._parents:
-            current = self._parents[current]
-            if isinstance(current, ast.Lambda):
-                args = current.args
-                captures = (
-                    *args.posonlyargs,
-                    *args.args,
-                    *args.kwonlyargs,
-                    *((args.vararg,) if args.vararg else ()),
-                    *((args.kwarg,) if args.kwarg else ()),
-                )
-                if any(arg.arg == name for arg in captures):
-                    return True
-                if any(
-                    isinstance(child, ast.NamedExpr) and child.target.id == name
-                    for child in ast.walk(current.body)
-                ):
-                    return True
-            if isinstance(
-                current, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
-            ) and any(
-                name in _target_names(clause.target) for clause in current.generators
-            ):
+        scope = self._node_scopes.get(node, self._root)
+        in_nested_expression = self._facts.expression_frame(node) is not None
+        for owner in visible_owners(scope, name, self._root, self._locally_binds):
+            if in_nested_expression and owner.kind == "class":
+                continue
+            yield owner
+
+    def shadows_registered_import(self, node: ast.AST, name: str) -> bool:
+        """Whether a lexical binding masks an explicitly imported interface.
+
+        The matching root import is not a shadow; ordinary writes and local
+        introductions are. Star imports are deliberately ignored. This uses
+        the same lightweight facts as built-in Collection recognition.
+        """
+        if self._expression_shadows(node, name):
+            return True
+        for owner in self._visible_owners(node, name):
+            if owner is self._root:
+                return name in self._non_import_events.get(id(owner), ())
+            if name in self._events.get(id(owner), ()):
                 return True
         return False
 
@@ -119,8 +124,7 @@ class BuiltinCollectionRecognition:
             return None
         if self._expression_shadows(node, name):
             return None
-        scope = self._node_scopes.get(node, self._root)
-        for owner in visible_owners(scope, name, self._root, self._locally_binds):
-            if name in self._events.get(id(owner), ()) or id(owner) in self._stars:
+        for owner in self._visible_owners(node, name):
+            if name in self._events.get(id(owner), ()):
                 return None
         return classification

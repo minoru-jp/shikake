@@ -71,7 +71,7 @@ class AnnotationVisibilityTests(unittest.TestCase):
         self.assertEqual({b.scope_kind for b in bindings}, {"annotation", "function"})
         self.assertTrue(
             all(
-                b.state == shikake.BindingState("stable", False, False)
+                b.state == shikake.BindingState("stable", False, False, False)
                 for b in bindings
             )
         )
@@ -149,6 +149,8 @@ class ForwardedOwnershipTests(unittest.TestCase):
         }
         (bound,) = inspected.bindings_for(functions["outer"], "x")
         self.assertEqual(bound.scope_kind, "function")
-        self.assertEqual(bound.state, shikake.BindingState("stable", True, False))
+        self.assertEqual(
+            bound.state, shikake.BindingState("stable", True, False, False)
+        )
         self.assertEqual(inspected.bindings_for(functions["middle"], "x"), ())
         self.assertEqual(inspected.bindings_for(functions["inner"], "x"), ())

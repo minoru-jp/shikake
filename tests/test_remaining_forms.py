@@ -30,9 +30,9 @@ def one(model: Model, role: str) -> Model:
 class RemainingFormsTests(unittest.TestCase):
     def test_kind_and_structure_separation(self) -> None:
         index = shikake.kind_index()
-        self.assertEqual(len(index.all_kinds()), 143)
+        self.assertEqual(len(index.all_kinds()), 142)
         self.assertEqual(len(index.all_structures()), 62)
-        self.assertEqual(len(index.all_features()), 2)
+        self.assertEqual(len(index.all_features()), 3)
         self.assertTrue(
             index.is_a(
                 "model.statement.scope_declaration.global",

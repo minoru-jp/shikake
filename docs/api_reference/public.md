@@ -33,7 +33,7 @@ import shikake
 model = shikake.parse_source("return 42", syntax_validation="ast")
 ```
 
-This only skips CPython compilation checks; it does **not** disable shikake's unsupported-syntax checks, change import permissions or execute source code. Compilation success does not guarantee successful execution, safety, definite assignment or language-specific validity. Compiler warnings are not silenced and CPython's AST compiler has its own depth/resource limits.
+This only skips CPython compilation checks; it does **not** disable shikake's unsupported-syntax checks or execute source code. Compilation success does not guarantee successful execution, safety, definite assignment or language-specific validity. Warnings from parsing and compilation follow the host's Python `warnings` settings; shikake does not capture them or convert them to `InspectionIssue`. For example, a caller can use `warnings.catch_warnings(record=True)` to collect warnings, or configure `warnings.simplefilter("ignore")` to suppress them. A warning promoted to an error may cause syntax validation to fail. CPython's AST compiler retains its own depth/resource limits.
 
 Python 3.15 adds `is_lazy` to `ast.Import` / `ast.ImportFrom`. Explicit `lazy import` and `lazy from ... import` are accepted with the usual import Kind and Structure, plus the `lazy` Feature on the import statement (not on individual aliases). The Feature records the **written modifier**, not whether an import is delayed due to runtime settings such as `__lazy_modules__`. Static name-binding dimensions, import restrictions and reference candidate rules remain the same; the timing of module loading, initialization and side effects is out of scope. Python interpreters older than 3.15 cannot parse this syntax. PEP 798 unpacking comprehensions are supported: a starred element in a list, set, or generator comprehension uses the existing comprehension and `starred_expansion` Models; dictionary unpacking uses `model.value.comprehension.dict.unpacking` with `mapping` and `clauses` roles. The ordinary dictionary comprehension Kind and roles remain unchanged. Interpreter-specific verification history, including reviewer-reported tests on stable Python 3.15.1, is maintained in [STATUS](../STATUS.md); unknown future AST changes cannot all be detected automatically.
 
@@ -63,34 +63,13 @@ Module-name collision checks, composition, relationships, and name-binding analy
 
 See [PARSING.SPEC_002](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_024](../../devdocs/canonical_sources/specification/parsing.py), and [PARSING.SPEC_025](../../devdocs/canonical_sources/specification/parsing.py) for the Japanese canonical rules.
 
-## Caller-selected import restrictions (`import_policy`, `allowed_modules`)
+## Import modeling (caller-owned acceptance)
 
-All four parsing/inspection APIs accept `import_policy: Literal["unrestricted", "registered_interfaces", "registered_modules"] = "unrestricted"` and `allowed_modules: tuple[str, ...] = (), syntax_validation: Literal["compile", "ast"] = "compile"`. These are **opt-in restrictions on written Python import statements**, independent of the `extensions` and `include` source selection options.
+All four parsing/inspection APIs model Python import syntax. With `import_policy=None`, imports are unrestricted. Consumers may pass `ImportPolicy(default="allow" | "deny", allow=(...), deny=(...), allow_star_import=False)` to delegate AST-only checking. Module entries match the specified module and its dotted descendants in both allow and deny rules; `module:Name` entries match exactly. For `from M import N`, deny additionally tests the `M.N` path even though `N` is not resolved as a submodule. Deny takes precedence. Star import requires explicit permission when a policy is provided, and its module is still checked against allow/deny rules. Relative imports use the policy default without resolution. Strict APIs raise `ImportPolicyError`; Partial inspection reports `InspectionIssue(category="import_policy")` and an incomplete result.
 
-| Mode | Allowed import syntax |
-| --- | --- |
-| `"unrestricted"` (default) | Existing behavior: unrelated imports are permitted; registered external structures retain their separate protections. |
-| `"registered_interfaces"` | Only explicit `from module import Interface` statements where the fully written interface root is registered in trusted external CallMappings. `import module` is rejected. |
-| `"registered_modules"` | `import module`, `import module as alias`, and `from module import name` for modules named in trusted external CallMappings or the additional `allowed_modules` tuple; **also** all explicit registered-interface imports allowed in `registered_interfaces`. |
+The presence of a star import is preserved as a Model but does not affect binding facts, built-in Collection normalization, or inherited class candidates. Explicitly named imports retain the existing resolution rules. Neither source modules nor `__all__` are evaluated. These checks are not a security boundary. For example, `deny=("os.path",)` rejects both `import os.path` and `from os import path`; allowing `os` does not grant an exception to this deny rule.
 
-For example, if the trusted definitions register `dot:Fn.sin`, `registered_interfaces` allows `from dot import Fn` (also `as F`) but rejects `import dot` and `from dot import helper`. `registered_modules` permits all three because `dot` is registered. For a deeper target `pkg:mod.Cls.make`, the structural root is `pkg.mod.Cls` while the declared module is `pkg`: `from pkg.mod import Cls` is permitted by **both** modes, but `from pkg.mod import helper` and `import pkg.mod` are not thereby permitted in `registered_modules`. The name `pkg.mod` is not inferred to be a real submodule. Specify `allowed_modules=("pkg.mod",)` if that entire module is intentionally permitted. For an arbitrary module not modeled as an external structure:
-
-```python
-import shikake
-
-result = shikake.inspect_source(
-    "import math\nvalue = math.sqrt(4)\n",
-    import_policy="registered_modules",
-    allowed_modules=("math", "my_company.geometry"),
-)
-assert result.complete
-```
-
-Neither `math` nor `my_company.geometry` needs to be installed. Imports of those modules are **ordinary Python Models**, and their unregistered calls remain ordinary Call Models. The module name match is **exact and case-sensitive**: `import my_company.geometry` and `from my_company.geometry import Vector` match, but `from my_company import geometry` does not. shikake does not resolve imports, check target existence or individual attribute names, infer that different import spellings refer to the same runtime library, or grant submodules implicitly. The caller is responsible for choosing permitted names and managing the runtime environment.
-
-`allowed_modules` may be nonempty **only** in `registered_modules`. It must be a tuple of distinct, syntactically valid, **NFKC-normalized** absolute dotted module names. Non-normalized names are rejected with `ValueError`, not silently rewritten. External `ImportedCall` target identifiers have the same NFKC requirement and must not be Python reserved keywords. Invalid options raise `TypeError` or `ValueError`, even for an empty source/package. Restricted modes reject relative imports (including imports within the analyzed package) and wildcard `from module import *`. The single directive `from __future__ import annotations` is allowed in both restricted modes, without allowing `import __future__` or other future features. For package-local references, write absolute imports and permit their exact module names as appropriate; listing names does not make relative imports valid. A violation raises `ExternalModelingError` in Strict parsing. Partial inspection reports `external.unregistered_import` (`details.path` and `details.policy`) with `model=None` for that source, or omits the offending module from a package. Only the first import-policy violation in lexical source order is reported; exhaustive collection is not promised. Existing registered-interface import location and reserved-name protections still apply. This feature does **not** prevent dynamic importing and is **not a security sandbox**.
-
-See [EXTERNAL.SPEC_013](../../devdocs/canonical_sources/specification/external.py) and [PARSING.SPEC_020](../../devdocs/canonical_sources/specification/parsing.py).
+See [EXTERNAL.SPEC_013](../../devdocs/canonical_sources/specification/external.py).
 
 ## Python 3.14 template strings
 
@@ -103,7 +82,7 @@ See [EXPRESSIONS.SPEC_030](../../devdocs/canonical_sources/specification/express
 `parse_source`, `parse_package`, and complete inspection results now represent collection construction as one of `model.value.collection.sequence`, `.mapping`, or `.set`. Each uses the same declared roles, in order: `construction: scalar` (`"literal"`, `"builtin"`, `"comprehension"`); `immutable: scalar` (an exact boolean); and `inputs: nodes` (the written construction expressions, **not** inferred result elements). These scalar differences contribute to structural equality and hashing, and are not Features.
 
 - Literal `[1, 2]` produces Sequence, `construction="literal"`, `immutable=False`, and two literal input Models. `(1, 2)` has `immutable=True`; `{"a": 1, **rest}` produces Mapping with ordered `dictionary_entry` inputs.
-- Stable built-in calls (`list`, `tuple`, `dict`, `set`, `frozenset`; `frozendict` on Python 3.15+) produce the corresponding Collection with `construction="builtin"` and **argument** Models, preserving keyword argument forms; `*`-unpacking and extra positional arguments are **not** normalized. Sequence/set constructors require 0–1 positional arguments with no keywords; mapping constructors allow 0–1 positional arguments plus keywords (including `**`). A same-name write or possible wildcard import in a visible scope retains an ordinary `model.value.call`. This deliberately does not verify runtime object identity or evaluate iteration.
+- Stable built-in calls (`list`, `tuple`, `dict`, `set`, `frozenset`; `frozendict` on Python 3.15+) produce the corresponding Collection with `construction="builtin"` and **argument** Models, preserving keyword argument forms; `*`-unpacking and extra positional arguments are **not** normalized. Sequence/set constructors require 0–1 positional arguments with no keywords; mapping constructors allow 0–1 positional arguments plus keywords (including `**`). A same-name write in a visible lexical scope retains an ordinary `model.value.call`. Star imports are not consulted; lambda defaults, the first comprehension iterable, and class-local visibility within comprehension bodies follow the applicable syntactic scope rules. This deliberately does not verify runtime object identity or evaluate iteration.
 - `inputs` depends on `construction`: `literal` stores direct elements/dictionary entries; `builtin` stores original argument Models; `comprehension` stores exactly one nested comprehension Model. The Collection and its nested comprehension can share an identical span in `walk()`; Model identity and position are distinct. List, set, and dict comprehensions produce Collection with `construction="comprehension"` and one nested Model of the previous `model.value.comprehension.*` kind. That child retains `element`/`key`/`value`/`mapping` and `clauses`. Generator expressions are unchanged.
 - Tuple/list unpacking targets are **not** Collection construction; `model.structural_part.sequence_target` has `spelling` (`"tuple"` or `"list"`) and `elements` (target Models). Existing code relying on `.collection.list`, `.collection.tuple`, `.collection.dict`, or the former value-collection `elements`/`entries` roles must be updated.
 
@@ -125,7 +104,7 @@ See [EXPRESSIONS.SPEC_032](../../devdocs/canonical_sources/specification/express
 
 **Operation.** Parse one Python source string into a Model using Strict analysis.
 
-- **Inputs:** `source: str, *, filename: str = "<source>", index: KindIndex | None = None, definitions: ModuleType | ExternalDefinitions | None = None, import_policy: Literal["unrestricted", "registered_interfaces", "registered_modules"] = "unrestricted", allowed_modules: tuple[str, ...] = (), syntax_validation: Literal["compile", "ast"] = "compile"`
+- **Inputs:** `source: str, *, filename: str = "<source>", index: KindIndex | None = None, definitions: ModuleType | ExternalDefinitions | None = None, syntax_validation: Literal["compile", "ast"] = "compile", import_policy: ImportPolicy | None = None`
 - **Result:** `Model`
 - **Specifications:** [PARSING.SPEC_001](../../devdocs/canonical_sources/specification/parsing.py), [EXTERNAL.SPEC_013](../../devdocs/canonical_sources/specification/external.py)
 
@@ -135,7 +114,7 @@ Unsupported syntax or invalid external definitions raise an exception.
 
 **Operation.** Parse selected regular Python-syntax source files under a directory using Strict analysis.
 
-- **Inputs:** `directory: str | Path, *, index: KindIndex | None = None, analyses: Iterable[str] | None = None, definitions: ModuleType | ExternalDefinitions | None = None, include: Callable[[Path, bool], bool] | None = None, extensions: tuple[str, ...] = (".py",), import_policy: Literal["unrestricted", "registered_interfaces", "registered_modules"] = "unrestricted", allowed_modules: tuple[str, ...] = (), syntax_validation: Literal["compile", "ast"] = "compile"`
+- **Inputs:** `directory: str | Path, *, index: KindIndex | None = None, analyses: Iterable[str] | None = None, definitions: ModuleType | ExternalDefinitions | None = None, include: Callable[[Path, bool], bool] | None = None, extensions: tuple[str, ...] = (".py",), syntax_validation: Literal["compile", "ast"] = "compile", import_policy: ImportPolicy | None = None`
 - **Result:** `PackageModel`
 - **Specifications:** [PARSING.SPEC_002](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_015](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_016](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_024](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_025](../../devdocs/canonical_sources/specification/parsing.py), [EXTERNAL.SPEC_013](../../devdocs/canonical_sources/specification/external.py)
 
@@ -145,19 +124,19 @@ Unsupported syntax or invalid external definitions raise an exception.
 
 **Operation.** Inspect one source string with Partial analysis, returning a Model and diagnostics.
 
-- **Inputs:** `source: str, *, filename: str = "<source>", index: KindIndex | None = None, definitions: ModuleType | ExternalDefinitions | None = None, import_policy: Literal["unrestricted", "registered_interfaces", "registered_modules"] = "unrestricted", allowed_modules: tuple[str, ...] = (), syntax_validation: Literal["compile", "ast"] = "compile"`
+- **Inputs:** `source: str, *, filename: str = "<source>", index: KindIndex | None = None, definitions: ModuleType | ExternalDefinitions | None = None, syntax_validation: Literal["compile", "ast"] = "compile", import_policy: ImportPolicy | None = None`
 - **Result:** `SourceInspection`
 - **Specifications:** [PARSING.SPEC_006](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_013](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_022](../../devdocs/canonical_sources/specification/parsing.py), [EXTERNAL.SPEC_013](../../devdocs/canonical_sources/specification/external.py)
 
 Unsupported syntax is reported with diagnostics identifying omitted units.
 
-Partial external errors are recoverable only when confined to a statement: unregistered interface calls, use of protected interfaces as values, or invalid mapped-call arguments. These statements are omitted while modelable sibling statements may be retained. However, missing statements can affect how later retained models are interpreted, including name-binding or definite-assignment checks. Never infer that an assignment absent from a partial Model was absent from the source. File-wide import and reserved-name violations make the source invalid (`model=None`). Strict parsing continues to reject all external violations.
+Unregistered external calls, interface value references, rebinding, and mismatched mapped-call arguments are not source errors. They remain ordinary Models, or matching calls become registered Kinds. The caller decides whether to accept them. The caller is responsible for import acceptance decisions.
 
 ## API_004: `shikake.inspect_package`
 
 **Operation.** Inspect a package with Partial analysis and report incompleteness and diagnostics.
 
-- **Inputs:** `directory: str | Path, *, index: KindIndex | None = None, analyses: Iterable[str] | None = None, definitions: ModuleType | ExternalDefinitions | None = None, include: Callable[[Path, bool], bool] | None = None, extensions: tuple[str, ...] = (".py",), import_policy: Literal["unrestricted", "registered_interfaces", "registered_modules"] = "unrestricted", allowed_modules: tuple[str, ...] = (), syntax_validation: Literal["compile", "ast"] = "compile"`
+- **Inputs:** `directory: str | Path, *, index: KindIndex | None = None, analyses: Iterable[str] | None = None, definitions: ModuleType | ExternalDefinitions | None = None, include: Callable[[Path, bool], bool] | None = None, extensions: tuple[str, ...] = (".py",), syntax_validation: Literal["compile", "ast"] = "compile", import_policy: ImportPolicy | None = None`
 - **Result:** `PackageInspection`
 - **Specifications:** [PARSING.SPEC_006](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_016](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_017](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_018](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_022](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_024](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_025](../../devdocs/canonical_sources/specification/parsing.py), [EXTERNAL.SPEC_013](../../devdocs/canonical_sources/specification/external.py)
 
@@ -253,7 +232,7 @@ The Model tree and relationship candidates are independent kinds of information.
 - **Result:** `BaseReference`
 - **Specifications:** [RELATIONS.SPEC_002](../../devdocs/canonical_sources/specification/relations.py)
 
-Discovered candidates do not establish runtime inheritance. When the root name is a standard built-in name with no same-named binding in an inner visible scope, `binding` is the module-level built-in state; for example, `class AppError(Exception)` with no same-named write gives `BindingState("builtin", False, False)`.
+Discovered candidates do not establish runtime inheritance. When the root name is a standard built-in name with no same-named binding in an inner visible scope, `binding` is the module-level built-in state; for example, `class AppError(Exception)` with no same-named write gives `BindingState("builtin", False, False, False)`.
 
 ## API_014: `shikake.OverrideCandidate`
 
@@ -269,13 +248,13 @@ Two evidence values distinguish a direct base from an indirect ancestor. Runtime
 
 **Type.** Three independent dimensions of a name's syntactic introduction, possible rebinding, and possible deletion.
 
-- **Inputs:** `introduction: Literal["stable", "unstable", "builtin"], may_rebind: bool, may_delete: bool`
+- **Inputs:** `introduction: Literal["stable", "unstable", "builtin", "external"], may_rebind: bool, may_delete: bool, may_value_use: bool`
 - **Result:** `BindingState`
 
-A name in the fixed standard built-in inventory for the parsing Python minor version is treated as virtually introduced at module entry: `BindingState("builtin", False, False)`. A module-level write to that name yields `may_rebind=True`; a deletion yields `may_delete=True`. Local shadowing remains independent. A first ordinary assignment such as `x = 1` gives `BindingState("stable", False, False)`. A second `x = 2` makes `may_rebind=True`. A lone `n += 1` gives `BindingState("unstable", True, False)` because augmented assignment reads an existing binding. A single conditional assignment can be `unstable` with `may_rebind=False`, while writes in loops may repeat. These properties do **not** guarantee definite assignment at any read. For details, see [BINDING.SPEC_002](../../devdocs/canonical_sources/specification/binding.py) and [BINDING.SPEC_003](../../devdocs/canonical_sources/specification/binding.py).
+A name in the fixed standard built-in inventory for the parsing Python minor version is treated as virtually introduced at module entry: `BindingState("builtin", False, False, False)`. A module-level write to that name yields `may_rebind=True`; a deletion yields `may_delete=True`. Local shadowing remains independent. A first ordinary assignment such as `x = 1` gives `BindingState("stable", False, False, False)`. A second `x = 2` makes `may_rebind=True`. A lone `n += 1` gives `BindingState("unstable", True, False, False)` because augmented assignment reads an existing binding. A single conditional assignment can be `unstable` with `may_rebind=False`, while writes in loops may repeat. These properties do **not** guarantee definite assignment at any read. For details, see [BINDING.SPEC_002](../../devdocs/canonical_sources/specification/binding.py) and [BINDING.SPEC_003](../../devdocs/canonical_sources/specification/binding.py).
 - **Specifications:** [BINDING.SPEC_001](../../devdocs/canonical_sources/specification/binding.py), [BINDING.SPEC_002](../../devdocs/canonical_sources/specification/binding.py), [BINDING.SPEC_003](../../devdocs/canonical_sources/specification/binding.py), [BINDING.SPEC_004](../../devdocs/canonical_sources/specification/binding.py)
 
-These fields describe syntactic binding facts, not whether a name is definitely assigned when read. Definite-assignment checks are outside shikake's scope; consumers needing them must implement checks under their own language restrictions or translation rules.
+These fields describe lightweight syntactic binding/use facts. `may_value_use=False` does not prove that value uses are absent; type annotations, class bases, and registered Call Interface targets are not observed as ordinary value uses. There is no comprehensive use tracker. They do not establish whether a name is definitely assigned when read. Definite-assignment checks are outside shikake's scope; consumers needing them must implement checks under their own language restrictions or translation rules.
 
 ## API_016: `shikake.NameBinding`
 
@@ -285,7 +264,7 @@ These fields describe syntactic binding facts, not whether a name is definitely 
 - **Result:** `NameBinding`
 - **Specifications:** [BINDING.SPEC_014](../../devdocs/canonical_sources/specification/binding.py)
 
-The same spelling in different lexical scopes is not conflated. In generic PEP 695 definitions, the annotation scope and the function/class body can share the **same** owner Model; `scope_kind` distinguishes these independent facts (`"annotation"` versus `"function"` or `"class"`). Thus `bindings_for(definition_model, "T")` may return two records with identical three-axis states but different `scope_kind` values. Library-generated records always set this property; manually constructed records may omit it (default `None`). `state` does not establish definite assignment at any read site.
+The same spelling in different lexical scopes is not conflated. In generic PEP 695 definitions, the annotation scope and the function/class body can share the **same** owner Model; `scope_kind` distinguishes these independent facts (`"annotation"` versus `"function"` or `"class"`). Thus `bindings_for(definition_model, "T")` may return two records with identical four-axis states but different `scope_kind` values. Library-generated records always set this property; manually constructed records may omit it (default `None`). `state` does not establish definite assignment at any read site.
 
 ## API_017: `shikake.SourceInspection`
 
@@ -295,7 +274,7 @@ The same spelling in different lexical scopes is not conflated. In generic PEP 6
 - **Result:** `SourceInspection`
 - **Specifications:** [PARSING.SPEC_006](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_022](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_023](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_029](../../devdocs/canonical_sources/specification/parsing.py)
 
-`complete` depends on both Model presence and an empty diagnostics list. Local external-structure errors may leave a partial Model containing valid sibling statements. Syntax errors and file-wide external violations (such as rebinding reserved names) still produce `model=None`. Do not treat an incomplete Model as a validated whole source. An omitted statement can affect interpretation of retained later models (for example, definite-assignment checks). The absence of a statement or binding in a partial model does not prove its absence in the original source. `name_bindings` contains scope-specific `NameBinding` facts only when the inspection is complete; it is empty for all incomplete results, even when a partial Model exists. The module identity is `<source>`. See [PARSING.SPEC_023](../../devdocs/canonical_sources/specification/parsing.py). `repr(inspection)` summarizes the Model and reports the number of name bindings as `<N items>` instead of expanding them. `issues` remains fully displayed to preserve diagnostic detail. The representation is not a serialization, and its overall length is not bounded when many issues are present.
+`complete` depends on both Model presence and an empty diagnostics list. Unsupported syntax may leave a partial Model containing valid sibling statements. Syntax errors produce `model=None`. Do not treat an incomplete Model as a validated whole source. An omitted statement can affect interpretation of retained later models (for example, definite-assignment checks). The absence of a statement or binding in a partial model does not prove its absence in the original source. `name_bindings` contains scope-specific `NameBinding` facts only when the inspection is complete; it is empty for all incomplete results, even when a partial Model exists. The module identity is `<source>`. See [PARSING.SPEC_023](../../devdocs/canonical_sources/specification/parsing.py). `repr(inspection)` summarizes the Model and reports the number of name bindings as `<N items>` instead of expanding them. `issues` remains fully displayed to preserve diagnostic detail. The representation is not a serialization, and its overall length is not bounded when many issues are present.
 
 ## API_018: `shikake.PackageInspection`
 
@@ -317,7 +296,7 @@ Also exposes properties forwarding results from `package`. On incomplete analysi
 
 `skipped_node_type` and `skipped_span` identify the omitted syntax unit.
 
-`code` identifies the issue without parsing the English `message`. The immutable `details` mapping contains only known values such as `target` or `keyword`. Code families include `syntax.invalid`, `syntax.unsupported`, and `external.*`. For the complete external-code list, see [PARSING.SPEC_020](../../devdocs/canonical_sources/specification/parsing.py). These codes do not change when a message is translated. Mapped-call argument errors provide the written call `target`. `external.too_many_positional` includes `expected_count` (mapped arguments) and `actual_count` (explicit positional arguments). `external.starred_positional` reports `*` expansion without estimating its size. `external.unknown_keyword` and `external.argument_mismatch` include `keyword`; `external.keyword_arguments` covers `**` expansion or duplicate keywords and includes the keyword if known. An omitted statement may also affect interpretation of retained later models, so missing bindings in a partial model do not establish missing assignments in the original source. For local external errors (unregistered calls, protected interface values, and mapped-call argument errors), `skipped_node_type` and `skipped_span` identify the omitted statement. File-wide external violations still return `model=None` with no invented skipped span.
+`code` identifies the issue without parsing the English `message`. The immutable `details` mapping contains only facts supported by the diagnostic. The main codes are `syntax.invalid` and `syntax.unsupported`. See [PARSING.SPEC_020](../../devdocs/canonical_sources/specification/parsing.py). Mapped-call argument mismatches and unregistered external calls are not diagnostic conditions; they remain ordinary Models.
 
 ## API_020: `shikake.UnsupportedSyntaxError`
 
@@ -328,16 +307,6 @@ Also exposes properties forwarding results from `package`. On incomplete analysi
 - **Specifications:** [PARSING.SPEC_005](../../devdocs/canonical_sources/specification/parsing.py)
 
 Partial analysis instead reports such failures as `InspectionIssue` values.
-
-## API_021: `shikake.ExternalModelingError`
-
-**Type.** An exception for an external-structure usage violation in Strict analysis.
-
-- **Inputs:** `message: str, node: ast.AST, *, code: str = "external.definition_error", details: Mapping[str, str | int] | None = None`
-- **Result:** `ExternalModelingError`
-- **Specifications:** [EXTERNAL.SPEC_008](../../devdocs/canonical_sources/specification/external.py)
-
-Partial analysis reports an `external_definition` diagnostic.
 
 ## API_022: `shikake.Model.parts`
 
@@ -528,7 +497,7 @@ Matches `OverrideCandidate.method` by Model identity, not structural equality. R
 - **Result:** `Feature`
 - **Specifications:** [MODEL.SPEC_006](../../devdocs/canonical_sources/specification/model.py), [MODEL.SPEC_018](../../devdocs/canonical_sources/specification/model.py)
 
-An immutable definition returned by `KindIndex.all_features()`. Built-in Features are `async` for specified asynchronous forms and `lazy` for explicit Python 3.15 import modifiers on `model.import.direct` / `model.import.from`. `lazy` is not attached to `model.import.alias` and does not represent runtime import timing.
+An immutable definition returned by `KindIndex.all_features()`. Built-in Features are `async` and `generator` on supported function/method Kinds, and `lazy` for explicit Python 3.15 import modifiers on `model.import.direct` / `model.import.from`. `lazy` is not attached to `model.import.alias` and does not represent runtime import timing.
 
 ## API_046: `shikake.PackageInspection.model`
 
@@ -760,5 +729,5 @@ import shikake
 inspected = shikake.inspect_source("value = tuple([1, 2])")
 assert inspected.complete and inspected.model is not None
 (binding,) = inspected.bindings_for(inspected.model, "tuple")
-assert binding.state == shikake.BindingState("builtin", False, False)
+assert binding.state == shikake.BindingState("builtin", False, False, False)
 ```

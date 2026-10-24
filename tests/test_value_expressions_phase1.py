@@ -153,7 +153,7 @@ class ValueExpressionTests(unittest.TestCase):
         self.assertEqual(inspected.issues, ())
         self.assertEqual(inspected.model, strict)
         self.assertEqual(len(many(strict, "body")), 2)
-        self.assertEqual(len(shikake.kind_index().all_kinds()), 143)
+        self.assertEqual(len(shikake.kind_index().all_kinds()), 142)
         # A type comment has no role in Strict or Partial Model generation.
         self.assertTrue(shikake.inspect_source("x = 1  # type: int\n").complete)
 

@@ -1,6 +1,35 @@
 # shikake changelog
 
-This changelog summarizes user-facing changes by release. The 0.0.3 entry is prepared for publication; it does not itself confirm a PyPI upload or GitHub Release. Design decisions and development history remain in Japanese canonical sources: [pre-release history](devdocs/canonical_sources/development_history/pre_release.py), [performance refactoring history](devdocs/canonical_sources/development_history/performance.py), [comment-position history](devdocs/canonical_sources/development_history/comments.py), and [built-in binding history](devdocs/canonical_sources/development_history/builtins.py).
+User-facing release history. The Japanese [canonical changelog source](devdocs/canonical_sources/changelog/canonical.py) is authoritative. Earlier design decisions and development history remain in [pre-release history](devdocs/canonical_sources/development_history/pre_release.py), [performance history](devdocs/canonical_sources/development_history/performance.py), [comment history](devdocs/canonical_sources/development_history/comments.py), and [built-in binding history](devdocs/canonical_sources/development_history/builtins.py). Version 0.0.4 is documented as a released version; artifact uploads are handled separately.
+
+## 0.0.4 - 2026-10-25
+
+**Breaking alpha release.** External interfaces are optional model transformations; identifier facts, import policies, generators, syntax context, and modeling performance have been updated. No backward-compatibility layer is provided.
+
+### Added
+
+- **Call, Type, and Generic mappings:** Trusted Shikumi declarations and `ExternalDefinitionsBuilder` can register directly imported free-function Calls, Type references, and fixed-arity Generic applications. Call, Type, and Generic uses of the same imported name may be registered independently.
+- **Four-axis `BindingState`:** Required `may_value_use` and `introduction="external"`. Ordinary value use is distinguished from registered interface syntax. Observations are lightweight; `may_value_use=False` is not proof of absence.
+- **Delegated `ImportPolicy`:** Optional `default`, `allow`, `deny`, and `allow_star_import=False`, with deny precedence. Module entries match themselves and descendant modules in both lists; `module:Name` matches exactly. For `from M import N`, deny also matches `M.N`. Star imports require explicit permission when a policy is supplied; without a policy no import filtering is performed.
+
+### Changed
+
+- **Consumer-owned acceptance:** Unknown operations, argument mismatches, value references, rebinding, and deletion of external names do not by themselves reject source code. Unmatched registered forms fall back to ordinary Call, Subscript, or name-reference Models. External-call argument matching is completed before consuming child Models, preventing the previous `KeyError` on missing arguments.
+- **Lexical recognition:** Specialized external interfaces and built-in Collection constructors respect definite shadowing by local assignments, parameters, lambdas, and comprehensions. Lambda defaults and the first comprehension iterable use the enclosing scope; a comprehension body within a class does not see the class's local bindings. This does not add full runtime name resolution or a type inference system.
+- **Star imports:** The syntax is preserved, but implicit name introductions and possible conflicts are ignored in the four binding dimensions, built-in Collection recognition, and inheritance candidates. Explicit named imports retain their existing behavior.
+- **Generators:** `model.definition.generator` was removed. Generator functions and methods now use ordinary `model.definition.function` / `.method` Kinds and Structures and carry the `generator` Feature, which can coexist with `async`.
+- **Modeling flow and performance:** Reuse shared AST context for type positions, expression scopes, Generic arguments, external interface recognition, and built-in Collections, reducing repeated ancestor walks for deep expressions. Common preparation for the four parsing/inspection APIs and shared block traversal were simplified.
+- **Host-owned warnings:** Parsing and compilation warnings are neither caught nor suppressed nor converted into `InspectionIssue`. Python's host `warnings` settings control display, filtering, and promotion to syntax errors.
+
+### Removed / migration
+
+- The former three-mode `import_policy` and `allowed_modules` settings, source-use prohibitions and reserved-name protection for external interfaces, and their error/recovery paths. The unused `ExternalModelingError` public exception was removed.
+- The three-argument `BindingState` constructor, the separate Generator Kind/Structure, and any compatibility adapters. The final diagnostics API has no warning-only category or `severity` field.
+
+### Verification
+
+- Stage9 passed 668 tests on Python 3.13.5 (655 passed, 13 skipped), with Ruff and BasedPyright reporting zero errors.
+- Reviewer-reported stage8 checks passed on Python 3.11–3.15 and free-threaded 3.14, with 95% branch coverage and no crashes in 9,892 real-code files. The stage9-only changes have not yet been reported as retested across all versions.
 
 ## 0.0.3 - 2026-10-24
 

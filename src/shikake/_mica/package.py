@@ -6,7 +6,6 @@ sources are imported or executed; composition and relation graphs are separate.
 
 from __future__ import annotations
 
-import ast
 import os
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator
@@ -16,23 +15,18 @@ from types import ModuleType
 
 from shikake.external import ExternalDefinitions
 
-from .ast_facts import SyntaxFacts, collect_syntax_facts
+from .ast_facts import SyntaxFacts
 from .base_references import BaseReference
-from .builtin_collections import BuiltinCollectionRecognition
 from .builtin_names import BUILTIN_NAMES
-from .external_structures import _ExternalStructures
-from .import_policy import (
-    ImportPolicy,
-    _assert_import_policy,
-    _validated_import_options,
-)
+from .import_policy import ImportPolicy
 from .kinds import KindIndex
 from .model import Model, ModelFactory, _clip_repr
 from .parser import (
     SyntaxValidation,
-    _Builder,
-    _compile_check,
+    _build_module,
     _external_settings,
+    _modeling_context,
+    _prepare_source,
     _validated_syntax_validation,
 )
 from .relation_analysis import (
@@ -83,7 +77,7 @@ class PackageModel:
     _module_index: dict[_ModelIdentity, str] = field(
         init=False, repr=False, compare=False
     )
-    _builtin_star_conflicts: frozenset[tuple[str, str]] = field(
+    _builtin_value_uses: frozenset[tuple[str, str]] = field(
         default_factory=frozenset, repr=False, compare=False
     )
     _complete: bool = field(default=True, repr=False, compare=False)
@@ -159,8 +153,9 @@ class PackageModel:
                     name,
                     BindingState(
                         "builtin",
-                        (module_name, name) in self._builtin_star_conflicts,
                         False,
+                        False,
+                        (module_name, name) in self._builtin_value_uses,
                     ),
                     "module",
                 ),
@@ -274,13 +269,11 @@ def parse_package(
     definitions: ModuleType | ExternalDefinitions | None = None,
     include: Callable[[Path, bool], bool] | None = None,
     extensions: tuple[str, ...] = (".py",),
-    import_policy: ImportPolicy = "unrestricted",
-    allowed_modules: tuple[str, ...] = (),
     syntax_validation: SyntaxValidation = "compile",
+    import_policy: ImportPolicy | None = None,
 ) -> PackageModel:
     """Model selected regular Python-syntax sources without executing them."""
     selected = _selected_analyses(analyses)
-    selected_modules = _validated_import_options(import_policy, allowed_modules)
     _validated_syntax_validation(syntax_validation)
     folder, paths = _package_paths(directory, include=include, extensions=extensions)
     resolved_index, prepared = _external_settings(definitions, index)
@@ -288,31 +281,31 @@ def parse_package(
     source_facts: dict[str, tuple[SyntaxFacts, dict[int, Model]]] = {}
     for path in paths:
         module_name, is_init = _module_identity(folder, path)
-        tree = ast.parse(path.read_bytes(), filename=str(path), type_comments=False)
-        _compile_check(tree, str(path), syntax_validation)
-        _assert_import_policy(
-            tree,
-            prepared,
-            import_policy=import_policy,
-            allowed_modules=selected_modules,
+        prepared_source = _prepare_source(
+            path.read_bytes(), str(path), syntax_validation, import_policy
         )
-        syntax = collect_syntax_facts(tree, include_references=prepared is not None)
-        matcher = _ExternalStructures.for_facts(syntax, prepared) if prepared else None
-        builder = _Builder(
-            resolved_index,
-            external=matcher,
-            collections=BuiltinCollectionRecognition(tree, syntax),
+        if prepared_source.error is not None:
+            raise prepared_source.error
+        tree = prepared_source.tree
+        assert tree is not None
+        context = _modeling_context(tree, prepared)
+        model, statement_models = _build_module(
+            tree, resolved_index, context, name=module_name
         )
-        modules[module_name] = (builder.module(tree, name=module_name), is_init)
-        source_facts[module_name] = (syntax, builder.statement_models)
+        modules[module_name] = (model, is_init)
+        source_facts[module_name] = (context.syntax, statement_models)
     package = ModelFactory(resolved_index).make(
         "model.package",
         name=folder.name,
         modules=tuple(module for module, _ in modules.values()),
     )
-    builtin_stars: set[tuple[str, str]] = set()
+    builtin_values: set[tuple[str, str]] = set()
     candidates, bases, bindings = _analyze_package_facts(
-        modules, selected, source_facts, builtin_star_sink=builtin_stars
+        modules,
+        selected,
+        source_facts,
+        builtin_value_sink=builtin_values,
+        external_definitions=prepared,
     )
     return PackageModel(
         package,
@@ -320,6 +313,6 @@ def parse_package(
         bases,
         selected,
         bindings,
-        _builtin_star_conflicts=frozenset(builtin_stars),
+        _builtin_value_uses=frozenset(builtin_values),
         _complete=True,
     )

@@ -149,7 +149,7 @@ class OperationKindTests(unittest.TestCase):
 
     def test_kind_index_has_unique_ids_and_valid_contracts(self) -> None:
         kinds = shikake.kind_index().all_kinds()
-        self.assertEqual(len(kinds), 143)
+        self.assertEqual(len(kinds), 142)
         self.assertEqual(len({kind.id for kind in kinds}), len(kinds))
         for kind in kinds:
             structure = shikake.kind_index().structure_of(kind.id)

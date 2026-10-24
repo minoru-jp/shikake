@@ -28,7 +28,9 @@ class RelationAnalysisTests(unittest.TestCase):
         self.assertEqual(base.subject.get_name("name"), "Derived")
         self.assertIs(base.expression, package.bases_for(base.subject)[0].expression)
         self.assertEqual(base.targets[0].get_name("name"), "Base")
-        self.assertEqual(base.binding, shikake.BindingState("stable", False, False))
+        self.assertEqual(
+            base.binding, shikake.BindingState("stable", False, False, False)
+        )
         (candidate,) = package.override_candidates
         self.assertEqual(candidate.base_module, "sample.case")
         self.assertEqual(package.overrides_for(candidate.method), (candidate,))
@@ -55,9 +57,9 @@ class RelationAnalysisTests(unittest.TestCase):
         self.assertEqual(
             [r.binding for r in refs],
             [
-                shikake.BindingState("stable", False, False),
-                shikake.BindingState("stable", True, False),
-                shikake.BindingState("stable", False, True),
+                shikake.BindingState("stable", False, False, False),
+                shikake.BindingState("stable", True, False, False),
+                shikake.BindingState("stable", False, True, False),
                 None,
                 None,
             ],
@@ -75,16 +77,18 @@ class RelationAnalysisTests(unittest.TestCase):
             analyses={"inheritance"},
         )
         (ref,) = package.base_references
-        self.assertEqual(ref.binding, shikake.BindingState("unstable", True, False))
+        self.assertEqual(
+            ref.binding, shikake.BindingState("unstable", True, False, False)
+        )
         self.assertEqual(len(ref.targets), 2)
 
     def test_written_changes_are_independent_of_location(self) -> None:
         for middle, expected in (
-            ("Base = other\n", shikake.BindingState("stable", True, False)),
-            ("del Base\n", shikake.BindingState("stable", False, True)),
+            ("Base = other\n", shikake.BindingState("stable", True, False, False)),
+            ("del Base\n", shikake.BindingState("stable", False, True, False)),
             (
                 "if flag:\n    Base = other\n",
-                shikake.BindingState("stable", True, False),
+                shikake.BindingState("stable", True, False, False),
             ),
         ):
             for before in (True, False):
@@ -104,7 +108,7 @@ class RelationAnalysisTests(unittest.TestCase):
             result = shikake.parse_package(folder)
         (reference,) = result.base_references
         self.assertEqual(
-            reference.binding, shikake.BindingState("stable", False, False)
+            reference.binding, shikake.BindingState("stable", False, False, False)
         )
         self.assertEqual([t.get_name("name") for t in reference.targets], ["Base"])
         # A change in an imported module is not part of the local binding state.

@@ -38,7 +38,7 @@ class OverrideBindingOrderTests(unittest.TestCase):
         (reference,) = result.base_references
         self.assertEqual(reference.targets, ())
         self.assertEqual(
-            reference.binding, shikake.BindingState("stable", False, False)
+            reference.binding, shikake.BindingState("stable", False, False, False)
         )
         self.assertEqual(result.override_candidates, ())
 
@@ -77,7 +77,7 @@ class OverrideBindingOrderTests(unittest.TestCase):
                 if not suffix.startswith("from .base import *"):
                     self.assertEqual(
                         reference.binding,
-                        shikake.BindingState("stable", False, False),
+                        shikake.BindingState("stable", False, False, False),
                     )
 
     def test_later_function_local_masks_outer_class(self) -> None:
@@ -93,7 +93,7 @@ class OverrideBindingOrderTests(unittest.TestCase):
         (reference,) = result.base_references
         self.assertEqual(reference.targets, ())
         self.assertEqual(
-            reference.binding, shikake.BindingState("stable", False, False)
+            reference.binding, shikake.BindingState("stable", False, False, False)
         )
 
     def test_later_enclosing_module_class_is_not_ordered_across_scopes(self) -> None:
@@ -108,7 +108,7 @@ class OverrideBindingOrderTests(unittest.TestCase):
         (reference,) = result.base_references
         self.assertEqual([m.get_name("name") for m in reference.targets], ["Base"])
         self.assertEqual(
-            reference.binding, shikake.BindingState("stable", False, False)
+            reference.binding, shikake.BindingState("stable", False, False, False)
         )
         self.assertEqual(len(result.override_candidates), 1)
 
@@ -125,7 +125,7 @@ class OverrideBindingOrderTests(unittest.TestCase):
         (reference,) = result.base_references
         self.assertEqual(reference.targets, ())
         self.assertEqual(
-            reference.binding, shikake.BindingState("stable", False, False)
+            reference.binding, shikake.BindingState("stable", False, False, False)
         )
 
     def test_conditional_write_and_deletion_are_independent(self) -> None:
@@ -153,7 +153,7 @@ class OverrideBindingOrderTests(unittest.TestCase):
         )
         (reference,) = result.base_references
         self.assertEqual(
-            reference.binding, shikake.BindingState("stable", False, False)
+            reference.binding, shikake.BindingState("stable", False, False, False)
         )
         self.assertEqual([t.get_name("name") for t in reference.targets], ["Base"])
 

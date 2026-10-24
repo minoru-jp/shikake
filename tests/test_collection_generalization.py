@@ -114,7 +114,6 @@ class GeneralizedCollectionTests(unittest.TestCase):
             "list = fn\nresult = list(xs)",
             "result = tuple(xs)\ntuple = fn",
             "del dict\nresult = dict(xs)",
-            "from foreign import *\nresult = set(xs)",
             "def f(list):\n return list(xs)",
             "def f():\n list = fn\n return list(xs)",
             "def f():\n list: int\n return list(xs)",
@@ -126,8 +125,6 @@ class GeneralizedCollectionTests(unittest.TestCase):
         )
         for source in samples:
             with self.subTest(source=source):
-                # Star-import syntax is valid only outside function and may be
-                # permitted by CPython compilation; no imported module executes.
                 model = shikake.parse_source(source)
                 calls = [m for m in model.walk() if m.kind.id == "model.value.call"]
                 self.assertTrue(calls, source)

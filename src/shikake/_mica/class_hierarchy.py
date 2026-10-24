@@ -11,7 +11,7 @@ from .base_references import BaseReference
 from .model import Model
 from .relation_facts import _FactIndex
 
-_METHOD_KINDS = frozenset({"model.definition.method", "model.definition.generator"})
+_METHOD_KINDS = frozenset({"model.definition.method"})
 
 
 @dataclass(slots=True)

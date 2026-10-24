@@ -81,7 +81,7 @@ class STATEMENTS:
         related @= (MODEL.SPEC_005,)
 
     class SPEC_010:
-        """関数定義自身の本文に属する `yield` / `yield from` が存在するとき、その定義はGenerator Kindに分類する。generator式とは別であり、到達可能性を評価しない。"""
+        """関数定義自身の本文に属する `yield` / `yield from` が存在するとき、通常のFunction/Method Kindに `generator` Featureを付与する。generator式とは別であり、到達可能性を評価しない。"""
 
         title @= "Generatorの分類"
         level @= MUST
@@ -120,9 +120,9 @@ class STATEMENTS:
         level @= MUST
 
     class SPEC_016:
-        """`model.definition.generator` は `model.definition` の子Kindであり、FunctionやMethodの下位Kindではない。GeneratorはCallableの構造を共有してもKindの継承関係を共有しない。クラス定義領域にあるGeneratorもGenerator Kindとし、GeneratorMethod Kindを新設しない。"""
+        """`generator` はFunction/Methodに付くFeatureであり、専用のGenerator KindやStructureを設けない。クラス定義領域にあるgeneratorも通常のMethod Kindのまま扱う。`async` と `generator` は独立して併用できる。"""
 
-        title @= "Generatorの独立した分類"
+        title @= "Generatorの共通Feature"
         level @= MUST
         related @= (MODEL.SPEC_002,)
 
@@ -215,17 +215,17 @@ class STATEMENTS:
         detail @= "AST: ast.AugAssign [BitXor] -> model.statement.assignment.augmented.bitwise_xor"
 
     class SPEC_024:
-        "関数本体に帰属するyieldを持つ場合はGeneratorとする。それ以外ではクラス定義領域かどうかでMethodとFunctionを区別する。asyncは共通Featureとし、Kindを専用化しない。"
+        "関数定義はクラス定義領域かどうかでMethodとFunctionを区別し、yieldの帰属ではKindを変えない。asyncとgeneratorは独立した共通Featureであり、KindとStructureを専用化しない。"
 
         title @= "関数・Method・Generatorの文脈依存"
         level @= MUST
         related @= (MODEL.SPEC_005, LAYOUTS.SPEC_006)
         detail @= "AST: ast.FunctionDef [function] -> model.definition.function"
         detail @= "AST: ast.FunctionDef [method] -> model.definition.method"
-        detail @= "AST: ast.FunctionDef [generator] -> model.definition.generator"
+        detail @= "AST: ast.FunctionDef [generator] -> model.definition.function"
         detail @= "AST: ast.AsyncFunctionDef [function] -> model.definition.function"
         detail @= "AST: ast.AsyncFunctionDef [method] -> model.definition.method"
-        detail @= "AST: ast.AsyncFunctionDef [generator] -> model.definition.generator"
+        detail @= "AST: ast.AsyncFunctionDef [generator] -> model.definition.function"
 
     class SPEC_025:
         "クラス定義とPython 3.12以降の型エイリアス定義を異なるKindとして保持し、型パラメータは独立した構造にする。"

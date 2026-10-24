@@ -99,27 +99,23 @@ class CompileSyntaxValidationTests(unittest.TestCase):
             self.assertTrue(partial_ast.complete)
             self.assertEqual(strict_ast.model, partial_ast.model)
 
-    def test_future_wrong_location_is_compiler_invalid_even_if_policy_allows(
-        self,
-    ) -> None:
+    def test_future_wrong_location_is_compiler_invalid(self) -> None:
         source = "def f():\n    from __future__ import annotations\n"
-        strict_ast = shikake.inspect_source(
-            source, import_policy="registered_interfaces", syntax_validation="ast"
-        )
+        strict_ast = shikake.inspect_source(source, syntax_validation="ast")
         self.assertTrue(strict_ast.complete, strict_ast.issues)
-        inspected = shikake.inspect_source(
-            source, import_policy="registered_interfaces"
-        )
+        inspected = shikake.inspect_source(source)
         self.assertEqual(inspected.issues[0].code, "syntax.invalid")
 
-    def test_first_import_policy_violation_follows_source_order(self) -> None:
+    def test_unregistered_imports_remain_regular_model_nodes(self) -> None:
         source = "def f():\n    import os\n\nimport sys\n"
-        inspected = shikake.inspect_source(
-            source, import_policy="registered_interfaces", syntax_validation="ast"
+        parsed = shikake.parse_source(source)
+        inspected = shikake.inspect_source(source)
+        self.assertTrue(inspected.complete, inspected.issues)
+        self.assertEqual(inspected.model, parsed)
+        self.assertEqual(
+            sum(node.kind.id == "model.import.direct" for node in parsed.walk()),
+            2,
         )
-        self.assertEqual(inspected.issues[0].code, "external.unregistered_import")
-        self.assertEqual(inspected.issues[0].details["path"], "os")
-        self.assertEqual(inspected.issues[0].line, 2)
 
     def test_imported_call_rejects_reserved_word_components(self) -> None:
         for target in (

@@ -39,9 +39,11 @@ class BindingPropertiesTests(unittest.TestCase):
             }
         )
         flags = self.module_facts(package, "sample.case")
-        self.assertEqual(flags["A"], shikake.BindingState("stable", False, False))
-        self.assertEqual(flags["B"], shikake.BindingState("stable", True, False))
-        self.assertEqual(flags["C"], shikake.BindingState("stable", False, True))
+        self.assertEqual(
+            flags["A"], shikake.BindingState("stable", False, False, False)
+        )
+        self.assertEqual(flags["B"], shikake.BindingState("stable", True, False, False))
+        self.assertEqual(flags["C"], shikake.BindingState("stable", False, True, False))
         self.assertEqual(package.base_references, ())
 
     def test_alternative_declarations_and_assignments_are_operations(self) -> None:
@@ -55,9 +57,13 @@ class BindingPropertiesTests(unittest.TestCase):
             }
         )
         flags = self.module_facts(package, "sample.case")
-        self.assertEqual(flags["A"], shikake.BindingState("unstable", False, False))
-        self.assertEqual(flags["B"], shikake.BindingState("unstable", True, False))
-        self.assertEqual(flags["C"], shikake.BindingState("stable", True, False))
+        self.assertEqual(
+            flags["A"], shikake.BindingState("unstable", False, False, False)
+        )
+        self.assertEqual(
+            flags["B"], shikake.BindingState("unstable", True, False, False)
+        )
+        self.assertEqual(flags["C"], shikake.BindingState("stable", True, False, False))
 
     def test_binding_properties_are_module_local_even_for_imports(self) -> None:
         package = self.parse(
@@ -71,8 +77,8 @@ class BindingPropertiesTests(unittest.TestCase):
         b = self.module_facts(package, "sample.b")
         c = self.module_facts(package, "sample.c")
         self.assertTrue(a["Base"].may_rebind)
-        self.assertEqual(b["Base"], shikake.BindingState("stable", False, False))
-        self.assertEqual(c["Base"], shikake.BindingState("stable", False, False))
+        self.assertEqual(b["Base"], shikake.BindingState("stable", False, False, False))
+        self.assertEqual(c["Base"], shikake.BindingState("stable", False, False, False))
 
     def test_known_star_import_without_name_does_not_rebind_it(self) -> None:
         package = self.parse(
@@ -82,7 +88,7 @@ class BindingPropertiesTests(unittest.TestCase):
             }
         )
         state = self.module_facts(package, "sample.case")["Base"]
-        self.assertEqual(state, shikake.BindingState("stable", False, False))
+        self.assertEqual(state, shikake.BindingState("stable", False, False, False))
 
     def test_shadowed_function_local_does_not_change_module(self) -> None:
         package = self.parse(
@@ -90,7 +96,7 @@ class BindingPropertiesTests(unittest.TestCase):
         )
         self.assertEqual(
             self.module_facts(package, "sample.case")["X"],
-            shikake.BindingState("stable", False, False),
+            shikake.BindingState("stable", False, False, False),
         )
         function = next(
             model
@@ -98,7 +104,9 @@ class BindingPropertiesTests(unittest.TestCase):
             if model.kind.id == "model.definition.function"
         )
         (local,) = package.bindings_for(function, "X")
-        self.assertEqual(local.state, shikake.BindingState("stable", False, True))
+        self.assertEqual(
+            local.state, shikake.BindingState("stable", False, True, False)
+        )
 
     def test_enclosing_condition_does_not_leak_into_new_scopes(self) -> None:
         package = self.parse(
@@ -166,16 +174,22 @@ class BindingPropertiesTests(unittest.TestCase):
             }
         )
         case = self.module_facts(package, "sample.case")
-        self.assertEqual(case["B"], shikake.BindingState("unstable", False, False))
-        self.assertEqual(case["Derived"], shikake.BindingState("stable", False, False))
-        self.assertEqual(case["Plain"], shikake.BindingState("stable", False, False))
         self.assertEqual(
-            case["Conditional"], shikake.BindingState("unstable", False, False)
+            case["B"], shikake.BindingState("unstable", False, False, False)
+        )
+        self.assertEqual(
+            case["Derived"], shikake.BindingState("stable", False, False, False)
+        )
+        self.assertEqual(
+            case["Plain"], shikake.BindingState("stable", False, False, False)
+        )
+        self.assertEqual(
+            case["Conditional"], shikake.BindingState("unstable", False, False, False)
         )
         self.assertNotIn("NeverIntroduced", case)
         self.assertEqual(
             self.module_facts(package, "sample.other")["B"],
-            shikake.BindingState("stable", False, False),
+            shikake.BindingState("stable", False, False, False),
         )
 
     def test_global_and_nonlocal_operations_retain_their_owners(self) -> None:
@@ -206,7 +220,9 @@ class BindingPropertiesTests(unittest.TestCase):
             and model.get_name("name") == "outer"
         )
         (local,) = package.bindings_for(outer, "Local")
-        self.assertEqual(local.state, shikake.BindingState("stable", True, False))
+        self.assertEqual(
+            local.state, shikake.BindingState("stable", True, False, False)
+        )
 
     def test_exception_handler_name_implies_deletion(self) -> None:
         package = self.parse(
@@ -218,7 +234,7 @@ class BindingPropertiesTests(unittest.TestCase):
         )
         self.assertEqual(
             self.module_facts(package, "sample.case")["Error"],
-            shikake.BindingState("unstable", False, True),
+            shikake.BindingState("unstable", False, True, True),
         )
 
     def test_exception_group_handler_name_implies_deletion(self) -> None:
@@ -232,7 +248,7 @@ class BindingPropertiesTests(unittest.TestCase):
         )
         self.assertEqual(
             self.module_facts(package, "sample.case")["Errors"],
-            shikake.BindingState("unstable", False, True),
+            shikake.BindingState("unstable", False, True, True),
         )
 
     def test_exception_deletion_respects_lexical_scope(self) -> None:
@@ -248,7 +264,7 @@ class BindingPropertiesTests(unittest.TestCase):
         )
         self.assertEqual(
             self.module_facts(package, "sample.case")["Error"],
-            shikake.BindingState("stable", False, False),
+            shikake.BindingState("stable", False, False, False),
         )
         function = next(
             model
@@ -256,7 +272,9 @@ class BindingPropertiesTests(unittest.TestCase):
             if model.kind.id == "model.definition.function"
         )
         (binding,) = package.bindings_for(function, "Error")
-        self.assertEqual(binding.state, shikake.BindingState("unstable", False, True))
+        self.assertEqual(
+            binding.state, shikake.BindingState("unstable", False, True, False)
+        )
 
     def test_unnamed_handler_does_not_introduce_deletion(self) -> None:
         package = self.parse(
@@ -270,7 +288,7 @@ class BindingPropertiesTests(unittest.TestCase):
         )
         self.assertEqual(
             self.module_facts(package, "sample.case")["Error"],
-            shikake.BindingState("stable", False, False),
+            shikake.BindingState("stable", False, False, False),
         )
 
     def test_exception_cleanup_follows_global_declaration(self) -> None:
@@ -287,7 +305,7 @@ class BindingPropertiesTests(unittest.TestCase):
         )
         self.assertEqual(
             self.module_facts(package, "sample.case")["Error"],
-            shikake.BindingState("stable", True, True),
+            shikake.BindingState("stable", True, True, False),
         )
 
     def test_global_write_is_attached_to_module_binding(self) -> None:
@@ -300,7 +318,7 @@ class BindingPropertiesTests(unittest.TestCase):
         )
         self.assertEqual(
             self.module_facts(package, "sample.case")["X"],
-            shikake.BindingState("stable", True, True),
+            shikake.BindingState("stable", True, True, False),
         )
 
 

@@ -38,7 +38,7 @@ class BaseReferenceContractTests(unittest.TestCase):
     def test_single_unconditional_class_introduction(self) -> None:
         reference = self.ref("class A: pass\nclass D(A): pass\n")
         self.assertEqual(
-            reference.binding, shikake.BindingState("stable", False, False)
+            reference.binding, shikake.BindingState("stable", False, False, False)
         )
 
     def test_base_reference_reports_implicit_except_deletion(self) -> None:
@@ -48,32 +48,40 @@ class BaseReferenceContractTests(unittest.TestCase):
             "except ValueError as Base:\n    pass\n"
             "class D(Base): pass\n"
         )
-        self.assertEqual(reference.binding, shikake.BindingState("stable", True, True))
+        self.assertEqual(
+            reference.binding, shikake.BindingState("stable", True, True, False)
+        )
 
     def test_initial_assignment_is_not_a_rebind(self) -> None:
         reference = self.ref("A = Unknown\nclass D(A): pass\n")
         self.assertEqual(
-            reference.binding, shikake.BindingState("stable", False, False)
+            reference.binding, shikake.BindingState("stable", False, False, False)
         )
 
     def test_conditional_class_introduction(self) -> None:
         reference = self.ref("if flag:\n    class A: pass\nclass D(A): pass\n")
         self.assertEqual(
-            reference.binding, shikake.BindingState("unstable", False, False)
+            reference.binding, shikake.BindingState("unstable", False, False, False)
         )
 
     def test_repeated_class_introduction(self) -> None:
         reference = self.ref("class A: pass\nclass A: pass\nclass D(A): pass\n")
-        self.assertEqual(reference.binding, shikake.BindingState("stable", True, False))
+        self.assertEqual(
+            reference.binding, shikake.BindingState("stable", True, False, False)
+        )
         self.assertEqual(len(reference.targets), 2)
 
     def test_deletion_after_base_reference(self) -> None:
         reference = self.ref("class A: pass\nclass D(A): pass\ndel A\n")
-        self.assertEqual(reference.binding, shikake.BindingState("stable", False, True))
+        self.assertEqual(
+            reference.binding, shikake.BindingState("stable", False, True, False)
+        )
 
     def test_rebinding_after_base_reference(self) -> None:
         reference = self.ref("class A: pass\nclass D(A): pass\nA = something\n")
-        self.assertEqual(reference.binding, shikake.BindingState("stable", True, False))
+        self.assertEqual(
+            reference.binding, shikake.BindingState("stable", True, False, False)
+        )
 
     def test_global_assignment_is_reported(self) -> None:
         reference = self.ref(
@@ -90,7 +98,7 @@ class BaseReferenceContractTests(unittest.TestCase):
     def test_import_from_unknown_is_stable_locally(self) -> None:
         reference = self.ref("from unknown import Base\nclass D(Base): pass\n")
         self.assertEqual(
-            reference.binding, shikake.BindingState("stable", False, False)
+            reference.binding, shikake.BindingState("stable", False, False, False)
         )
         self.assertEqual(reference.targets, ())
 
@@ -106,7 +114,7 @@ class BaseReferenceContractTests(unittest.TestCase):
     def test_nested_attribute_uses_root_name_state(self) -> None:
         reference = self.ref("class A:\n    class B: pass\nclass D(A.B): pass\n")
         self.assertEqual(
-            reference.binding, shikake.BindingState("stable", False, False)
+            reference.binding, shikake.BindingState("stable", False, False, False)
         )
         self.assertEqual(reference.targets[0].get_name("name"), "B")
 
@@ -114,7 +122,7 @@ class BaseReferenceContractTests(unittest.TestCase):
         reference = self.ref("class A: pass\nA.B = Other\nclass D(A.B): pass\n")
         self.assertTrue(reference.attribute_modified)
         self.assertEqual(
-            reference.binding, shikake.BindingState("stable", False, False)
+            reference.binding, shikake.BindingState("stable", False, False, True)
         )
 
     def test_attribute_deletion_is_a_separate_fact(self) -> None:
@@ -133,7 +141,7 @@ class BaseReferenceContractTests(unittest.TestCase):
             "if flag:\n    class A: pass\nelse:\n    class A: pass\nclass D(A): pass\n"
         )
         self.assertEqual(
-            reference.binding, shikake.BindingState("unstable", True, False)
+            reference.binding, shikake.BindingState("unstable", True, False, False)
         )
 
     def test_try_blocks_do_not_suppress_written_operations(self) -> None:

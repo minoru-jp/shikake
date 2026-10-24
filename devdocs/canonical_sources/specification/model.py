@@ -50,7 +50,7 @@ class MODEL:
         level @= MUST
 
     class SPEC_006:
-        """FeatureはKindの分類木とは独立した構文上の特徴を表す。`async` は規定済みの対応Kindにのみ付与でき、`lazy` は `model.import.direct` と `model.import.from` にのみ付与できる。`lazy` はソースに明示されたキーワードの存在だけを表し、暗黙の遅延import設定や実際のモジュール初期化時刻は表さない。Featureの付与はPythonの非同期実行や遅延実行をシミュレートすることではない。"""
+        """FeatureはKindの分類木とは独立した構文上の特徴を表す。`async` および `generator` は規定済みのFunction/Method Kindに付与でき、`lazy` は `model.import.direct` と `model.import.from` にのみ付与できる。`lazy` はソースに明示されたキーワードの存在だけを表し、暗黙の遅延import設定や実際のモジュール初期化時刻は表さない。Featureの付与はPythonの非同期実行や遅延実行をシミュレートすることではない。"""
 
         title @= "Featureの位置付け"
         level @= MUST

@@ -153,7 +153,9 @@ class RelationFactIndexTests(unittest.TestCase):
             analyses={"inheritance"},
         )
         (relation,) = result.base_references
-        self.assertEqual(relation.binding, shikake.BindingState("stable", False, False))
+        self.assertEqual(
+            relation.binding, shikake.BindingState("stable", False, False, False)
+        )
         self.assertEqual(relation.targets[0].get("name"), "Local")
 
     def test_condition_header_rebinding_is_visible_to_nested_class(self) -> None:
@@ -173,6 +175,41 @@ class RelationFactIndexTests(unittest.TestCase):
         )
         (relation,) = result.base_references
         self.assertTrue(relation.binding.may_rebind)  # type: ignore[union-attr]
+
+    def test_collected_events_preserve_lexical_ownership(self) -> None:
+        source = (
+            "from demo.kinds import int32\n"
+            "count = 0\n"
+            "def increment():\n"
+            "    global count\n"
+            "    count += 1\n"
+            "def outer():\n"
+            "    local = 1\n"
+            "    def inner():\n"
+            "        nonlocal local\n"
+            "        local += 1\n"
+            "        return local\n"
+            "    return inner\n"
+        )
+        result = shikake.inspect_source(source)
+        assert result.model is not None
+        self.assertTrue(result.complete)
+        root = result.model
+        count = result.bindings_for(root, "count")[0]
+        self.assertEqual(count.state.introduction, "stable")
+        self.assertTrue(count.state.may_rebind)
+        self.assertEqual(
+            result.bindings_for(root, "int32")[0].state.introduction, "stable"
+        )
+        outer = next(
+            node
+            for node in root.walk()
+            if node.kind.id == "model.definition.function"
+            and node.get("name") == "outer"
+        )
+        local = result.bindings_for(outer, "local")[0]
+        self.assertTrue(local.state.may_rebind)
+        self.assertTrue(local.state.may_value_use)
 
     def test_selected_definition_kinds_can_be_extended(self) -> None:
         tree = ast.parse("def run():\n    class Inner: pass\n")

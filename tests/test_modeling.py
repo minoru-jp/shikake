@@ -21,7 +21,7 @@ SAMPLE = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "shipping.
 class KindIndexTests(unittest.TestCase):
     def test_shikumi_description_and_classification(self) -> None:
         index = load_kind_index()
-        self.assertEqual(len(index.all_kinds()), 143)
+        self.assertEqual(len(index.all_kinds()), 142)
         kind = index.get("model.value.access.index")
         self.assertEqual(kind.parent_id, "model.value.access")
         self.assertEqual(

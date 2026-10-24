@@ -36,7 +36,9 @@ class SharedFeedbackPathsTests(unittest.TestCase):
             }
         )
         reference = self.refs(result)["D"]
-        self.assertEqual(reference.binding, shikake.BindingState("stable", True, False))
+        self.assertEqual(
+            reference.binding, shikake.BindingState("stable", True, False, False)
+        )
         self.assertEqual(reference.targets[0].get_name("name"), "Base")
         body_only = self.parse(
             {
@@ -45,7 +47,7 @@ class SharedFeedbackPathsTests(unittest.TestCase):
         )
         self.assertEqual(
             self.refs(body_only)["D"].binding,
-            shikake.BindingState("stable", False, False),
+            shikake.BindingState("stable", False, False, False),
         )
         self.assertEqual(self.refs(body_only)["D"].targets[0].get_name("name"), "Base")
 
@@ -64,7 +66,7 @@ class SharedFeedbackPathsTests(unittest.TestCase):
                 )
                 ref = self.refs(result)["D"]
                 self.assertEqual(
-                    ref.binding, shikake.BindingState("stable", True, False)
+                    ref.binding, shikake.BindingState("stable", True, False, False)
                 )
 
     def test_same_method_never_appears_as_own_override_candidate(self) -> None:
@@ -108,14 +110,19 @@ class SharedFeedbackPathsTests(unittest.TestCase):
                     }
                 )
                 ref = self.refs(result)["D"]
-                self.assertEqual(
-                    ref.binding, shikake.BindingState("unstable", False, False)
-                )
-                self.assertEqual(len(ref.targets), 1)
-                self.assertEqual(
-                    ref.targets[0].get_name("name"),
-                    "Base" if " as a" in initializer else "a",
-                )
+                if " as a" in initializer:
+                    self.assertEqual(
+                        ref.binding,
+                        shikake.BindingState("unstable", False, False, False),
+                    )
+                    self.assertEqual(len(ref.targets), 1)
+                    self.assertEqual(ref.targets[0].get_name("name"), "Base")
+                else:
+                    # The wildcard no longer competes with explicit imports.
+                    self.assertEqual(
+                        ref.binding, shikake.BindingState("stable", False, False, False)
+                    )
+                    self.assertEqual(ref.targets, ())
 
     def test_direct_package_class_collides_with_named_submodule(self) -> None:
         result = self.parse(
@@ -126,7 +133,9 @@ class SharedFeedbackPathsTests(unittest.TestCase):
             }
         )
         ref = self.refs(result)["D"]
-        self.assertEqual(ref.binding, shikake.BindingState("unstable", False, False))
+        self.assertEqual(
+            ref.binding, shikake.BindingState("unstable", False, False, False)
+        )
         self.assertEqual(ref.targets[0].get_name("name"), "a")
 
     def test_package_without_attribute_can_use_child_module(self) -> None:
@@ -162,12 +171,16 @@ class SharedFeedbackPathsTests(unittest.TestCase):
                     1,
                 )
 
-    def test_distinct_external_alias_rebinding_stays_rejected(self) -> None:
+    def test_distinct_external_alias_rebinding_is_not_a_source_error(self) -> None:
         source = (
             "from framework.memory import Memory as M\nfrom other import M\nM.new(1)\n"
         )
-        with self.assertRaises(shikake.ExternalModelingError):
-            shikake.parse_source(source, definitions=memory_rules)
+        result = shikake.inspect_source(source, definitions=memory_rules)
+        self.assertTrue(result.complete, result.issues)
+        assert result.model is not None
+        self.assertIn("model.value.call", {m.kind.id for m in result.model.walk()})
+        (binding,) = result.bindings_for(result.model, "M")
+        self.assertTrue(binding.state.may_rebind)
 
 
 if __name__ == "__main__":

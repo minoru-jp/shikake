@@ -24,7 +24,7 @@ class BuiltinBindingFactsTests(unittest.TestCase):
         assert inspected.model is not None
         self.assertEqual(
             inspected.bindings_for(inspected.model, "tuple")[0].state,
-            shikake.BindingState("builtin", False, False),
+            shikake.BindingState("builtin", False, False, False),
         )
         self.assertEqual(
             [binding.name for binding in inspected.name_bindings], ["value"]
@@ -48,7 +48,10 @@ class BuiltinBindingFactsTests(unittest.TestCase):
                 assert result.model is not None
                 (binding,) = result.bindings_for(result.model, "tuple")
                 self.assertEqual(
-                    binding.state, shikake.BindingState("builtin", rebound, deleted)
+                    binding.state,
+                    shikake.BindingState(
+                        "builtin", rebound, deleted, source == "tuple = tuple"
+                    ),
                 )
                 self.assertEqual(
                     next(b for b in result.name_bindings if b.name == "tuple"),
@@ -64,12 +67,12 @@ class BuiltinBindingFactsTests(unittest.TestCase):
         local, other = result.model.get_nodes("body")
         self.assertEqual(
             result.bindings_for(local, "tuple")[0].state,
-            shikake.BindingState("stable", False, False),
+            shikake.BindingState("stable", False, False, True),
         )
         self.assertEqual(result.bindings_for(other, "tuple"), ())
         self.assertEqual(
             result.bindings_for(result.model, "tuple")[0].state,
-            shikake.BindingState("builtin", False, False),
+            shikake.BindingState("builtin", False, False, False),
         )
         global_result = self.inspect(
             "def mutate():\n    global tuple\n    tuple = list\n"
@@ -77,7 +80,7 @@ class BuiltinBindingFactsTests(unittest.TestCase):
         assert global_result.model is not None
         self.assertEqual(
             global_result.bindings_for(global_result.model, "tuple")[0].state,
-            shikake.BindingState("builtin", True, False),
+            shikake.BindingState("builtin", True, False, False),
         )
         self.assertEqual(
             global_result.bindings_for(
@@ -93,15 +96,15 @@ class BuiltinBindingFactsTests(unittest.TestCase):
         self.assertEqual(result.bindings_for(local, "tuple"), ())
         self.assertEqual(
             result.bindings_for(result.model, "tuple")[0].state,
-            shikake.BindingState("builtin", False, False),
+            shikake.BindingState("builtin", False, False, False),
         )
 
-    def test_wildcard_import_may_shadow_builtin(self) -> None:
+    def test_wildcard_import_is_ignored_for_builtin_binding(self) -> None:
         result = self.inspect("from unknown import *\nvalue = tuple([1])\n")
         assert result.model is not None
         self.assertEqual(
             result.bindings_for(result.model, "tuple")[0].state,
-            shikake.BindingState("builtin", True, False),
+            shikake.BindingState("builtin", False, False, False),
         )
 
     def test_package_queries_and_reference_state(self) -> None:
@@ -112,7 +115,9 @@ class BuiltinBindingFactsTests(unittest.TestCase):
             package = shikake.parse_package(folder)
         root = package.model.get_nodes("modules")[0]
         (binding,) = package.bindings_for(root, "tuple")
-        self.assertEqual(binding.state, shikake.BindingState("builtin", False, False))
+        self.assertEqual(
+            binding.state, shikake.BindingState("builtin", False, False, False)
+        )
         self.assertFalse(any(b.name == "tuple" for b in package.name_bindings))
         (reference,) = package.base_references
         self.assertEqual(reference.binding, binding.state)
@@ -128,7 +133,7 @@ class BuiltinBindingFactsTests(unittest.TestCase):
             cloned_root = cloned.model.get_nodes("modules")[0]
             self.assertEqual(
                 cloned.bindings_for(cloned_root, "tuple")[0].state,
-                shikake.BindingState("builtin", False, False),
+                shikake.BindingState("builtin", False, False, False),
             )
 
     def test_source_inspection_query_cache_survives_copy_pickle(self) -> None:
@@ -139,7 +144,7 @@ class BuiltinBindingFactsTests(unittest.TestCase):
         self.assertEqual(result.bindings_for(result.model, "value")[0].name, "value")
         self.assertEqual(
             result.bindings_for(result.model, "tuple")[0].state,
-            shikake.BindingState("builtin", False, False),
+            shikake.BindingState("builtin", False, False, False),
         )
         for clone in (
             copy.copy(result),
@@ -150,7 +155,7 @@ class BuiltinBindingFactsTests(unittest.TestCase):
             self.assertEqual(clone.bindings_for(clone.model, "value")[0].name, "value")
             self.assertEqual(
                 clone.bindings_for(clone.model, "tuple")[0].state,
-                shikake.BindingState("builtin", False, False),
+                shikake.BindingState("builtin", False, False, False),
             )
             if clone.model is not result.model:
                 self.assertEqual(clone.bindings_for(result.model, "other"), ())
@@ -163,11 +168,11 @@ class BuiltinBindingFactsTests(unittest.TestCase):
         cls = result.model.get_nodes("body")[0]
         self.assertEqual(
             result.bindings_for(cls, "tuple")[0].state,
-            shikake.BindingState("stable", False, False),
+            shikake.BindingState("stable", False, False, False),
         )
         self.assertEqual(
             result.bindings_for(result.model, "tuple")[0].state,
-            shikake.BindingState("builtin", False, False),
+            shikake.BindingState("builtin", False, False, False),
         )
 
     def test_known_star_import_does_not_automatically_shadow_builtin(self) -> None:
@@ -180,7 +185,7 @@ class BuiltinBindingFactsTests(unittest.TestCase):
         root = package.model.get_nodes("modules")[0]
         self.assertEqual(
             package.bindings_for(root, "tuple")[0].state,
-            shikake.BindingState("builtin", False, False),
+            shikake.BindingState("builtin", False, False, False),
         )
 
     @unittest.skipUnless(
@@ -191,7 +196,7 @@ class BuiltinBindingFactsTests(unittest.TestCase):
         assert inspected.model is not None
         self.assertEqual(
             inspected.bindings_for(inspected.model, "frozendict")[0].state,
-            shikake.BindingState("builtin", False, False),
+            shikake.BindingState("builtin", False, False, False),
         )
 
     def test_incomplete_inspection_never_invents_builtin(self) -> None:

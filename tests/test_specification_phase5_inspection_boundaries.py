@@ -84,28 +84,18 @@ class Phase5PartialBoundaryContracts(unittest.TestCase):
             )
             self.assertTrue(complete.package.name_bindings)
 
-    def test_external_violation_omits_only_bad_module_and_binding_results(self) -> None:
+    def test_external_rebinding_does_not_omit_modules_or_bindings(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "pkg"
             root.mkdir()
             (root / "bad.py").write_text(
-                "from framework.memory import Memory\nMemory = 1\n",
-                encoding="utf-8",
+                "from framework.memory import Memory\nMemory = 1\n", encoding="utf-8"
             )
             (root / "good.py").write_text("class Good: pass\n", encoding="utf-8")
             inspected = shikake.inspect_package(root, definitions=external_rules)
-            self.assertEqual(
-                tuple(issue.category for issue in inspected.issues),
-                ("external_definition",),
-            )
-            self.assertEqual(
-                tuple(m.get_name("name") for m in inspected.model.get_nodes("modules")),
-                ("pkg.good",),
-            )
-            self.assertEqual(inspected.package.name_bindings, ())
-            self.assertEqual(inspected.base_references, ())
-            self.assertEqual(inspected.override_candidates, ())
-            self.assertFalse(inspected.analyses)
+        self.assertTrue(inspected.complete, inspected.issues)
+        self.assertEqual(len(inspected.model.get_nodes("modules")), 2)
+        self.assertTrue(inspected.package.name_bindings)
 
 
 if __name__ == "__main__":

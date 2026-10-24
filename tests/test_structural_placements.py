@@ -200,10 +200,13 @@ obj.other: str = None
             "class Example:\n    if flag:\n        def values(self):\n            yield 1\n"
         )
         generator = next(
-            node for node in cls.walk() if node.kind.id == "model.definition.generator"
+            node
+            for node in cls.walk()
+            if node.kind.id == "model.definition.method"
+            and "generator" in node.features
         )
         self.assertEqual(generator.get("name"), "values")
-        self.assertEqual(generator.features, ())
+        self.assertEqual(generator.features, ("generator",))
 
     def test_override_candidates_follow_structural_placement_only(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

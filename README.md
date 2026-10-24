@@ -1,185 +1,299 @@
 # shikake
 
-**shikake** is an AST-based library that models the static structures and relationships of Python source code according to consumer-defined, domain-specific structural conventions.
+**Alpha warning:** This library is experimental. Breaking changes to APIs and Model contracts may occur.
 
-It provides building blocks for working with Python code under your own rules, including transpilation and the design or validation of restricted Python dialects. You can also define custom structures and have designated Python constructs modeled using those structures.
+**shikake** turns Python source code into structured Models. **It provides structure; consumers decide what the code means and whether to accept it.**
 
-Python syntax validation defaults to CPython's non-executing compilation level (`syntax_validation="compile"`). Use `syntax_validation="ast"` to skip compilation checks when modeling AST-parseable restricted dialects; unsupported shikake syntax remains unsupported. This does not execute input code or guarantee runtime correctness.
-
-## Development status (Alpha)
-
-shikake is currently in **Alpha**. Public APIs, specifications, and data structures may change incompatibly without prior notice. See [STATUS](https://github.com/minoru-jp/shikake/blob/HEAD/docs/STATUS.md) for current progress.
-
-## Core concepts
-
-Rather than preserving Python syntax verbatim, shikake represents selected syntactic information in a form that consumers can interpret for their own purposes.
-
-### Model structure
-
-- **Kind** classifies a syntactic element.
-- **Structure** specifies the roles and shapes of its constituent parts.
-- **Feature** captures orthogonal characteristics, such as `async` or an explicitly written `lazy` import modifier.
-- **Model** holds a concrete element according to these definitions.
-
-Trusted external Shikumi declarations or an `ExternalDefinitionsBuilder` using Python data can add Kinds and Structures, and registered calls are represented by dedicated Models during parsing. External Feature declarations are not currently supported.
-
-### Three dimensions of name binding
-
-shikake represents three independent properties of a name's binding:
-
-- `introduction`: whether a written introduction is structurally stable (`stable` or `unstable`), or an implicit interpreter built-in introduction (`builtin`).
-- `may_rebind`: whether a name may be rebound by a later or repeatable write, or by an augmented assignment.
-- `may_delete`: whether the syntax indicates possible deletion.
-
-For example, `x = 1` alone has `may_rebind=False`; adding `x = 2` makes it `True`. A lone `n += 1` does not establish a stable introduction. Built-in names such as `tuple` are treated as virtually introduced at module entry. A written module-level assignment to such a name is reported as a *possible rebind*, while a same-named local binding remains separate. Query them through `PackageModel.bindings_for(module, name)` or `SourceInspection.bindings_for(module, name)` after complete inspection. Read-only built-in names are not eagerly enumerated in `name_bindings`. Generic type-parameter annotation scopes and function/class bodies may share an owner Model; `NameBinding.scope_kind` distinguishes their otherwise identical records. These are **syntactic facts**, not predictions of execution, definite assignment, or judgments about code quality. The standard built-in name set is fixed for the Python minor version used for analysis; it does not depend on the current process’s `builtins` namespace. Runtime rebinding and object identity are not inferred.
-
-### Static relationship candidates
-
-shikake can report candidate targets of base-class references and same-name method override candidates. These are candidates supported by the AST, not guarantees about runtime targets or method resolution order. See the [API Reference](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/INDEX.md) for the available results and links to their specifications.
+- **Building blocks:** **Kind** (classification), **Structure** (roles and shapes of parts), and **Feature** (independent syntactic characteristics).
+- **Foundation:** Python's standard-library `ast` and `tokenize` modules, plus the external **Shikumi** library.
+- **Extensibility:** Consumers can register external Call, Type, and Generic interfaces.
 
 ## Installation
 
-Python 3.11 or later is required. CI targets Python 3.11–3.15; Python 3.14 t-strings are modeled as distinct Kinds.
+Requires Python 3.11 or later.
 
 ```bash
 python -m pip install shikake
 ```
 
-## Quick start
+For development progress and support coverage, see [STATUS](https://github.com/minoru-jp/shikake/blob/HEAD/docs/STATUS.md).
+
+## Example
+
+This example models both Python syntax and registered external interfaces:
+
+- **Python structure:** a class, methods, a loop, and type annotations.
+- **Registered structure:** external Call, Type, and Generic interfaces.
+
+The `demo` modules are illustrative. shikake neither executes the analyzed source nor imports them.
+
+### 1. Python source
 
 ```python
-import shikake
+source = '''from demo.kinds import Int32, Vector
+from demo.ops import clamp
 
-source = '''
-class Counter:
-    def __init__(self, start=0):
+class Accumulator:
+    def __init__(self, start: Int32):
         self.value = start
 
-    def increase(self, amount):
-        if amount > 0:
-            self.value += amount
-        return self.value
+    def accumulate(self, numbers: Vector[Int32, 4]) -> Int32:
+        total: Int32 = 0
+        for number in numbers:
+            total += number
+        self.value += total
+        return clamp(self.value, 0, 100)
 
-def calculate(values):
-    counter = Counter()
-    for value in values:
-        counter.increase(value)
-    return counter.value
+def summarize(values: Vector[Int32, 4]) -> Int32:
+    accumulator = Accumulator(0)
+    return accumulator.accumulate(values)
 '''
-
-root = shikake.parse_source(source)
-
-for model in root.walk():
-    print(model.kind.id)
-    print([part.role for part in model.parts()])
 ```
 
-`parse_source()` builds a Model from one Python source string, and `walk()` traverses its composition tree. Kind, Structure, and Feature let consumers classify elements without depending directly on their original AST nodes.
+### 2. Register external interfaces and model the source
 
-### Generalized collection construction (v0.0.3)
+`ExternalDefinitionsBuilder` registers imported names and the syntactic forms in which they are used:
 
-Collection value Models use the three concrete Kinds `model.value.collection.sequence`, `.mapping`, and `.set`. All share `construction` (`literal`, `builtin`, or `comprehension`), `immutable` (a boolean), and `inputs` (ordered construction expressions). For example, `[1, 2]` and `list(xs)` are both Sequence Models, but have different `construction` values and different input Models. `(1, 2)` and `tuple(xs)` additionally have `immutable=True`.
+- **Type:** `Int32` → `demo.type.int32`
+- **Generic:** `Vector[...]` → `demo.type.vector`
+- **Call:** `clamp(...)` → `demo.operation.clamp`
 
-The standard built-in name inventory is fixed per Python minor version, independent of `site` conveniences or process changes to `builtins`. Constructor calls are normalized only for supported written argument shapes: `list`/`tuple`/`set`/`frozenset` accept 0–1 positional arguments and no keywords or starred arguments; `dict`/`frozendict` accept 0–1 positional arguments and keyword arguments including `**`, but no `*` argument. Invalid or uncertain forms remain Calls without runtime argument validation. Generic PEP 695 type parameters shadow built-ins in the scopes where Python makes them visible. Annotation scopes directly inside a class can also see that class's names; ordinary nested method/class bodies cannot. Calls to built-in collection constructors are normalized **only if** the name is available as an unmodified implicit built-in in its visible lexical scopes. Shadowed or possibly overwritten names remain ordinary calls. This is a static and conservative classification, not evaluation or runtime type inference. Mapping covers `dict` and Python 3.15+ `frozendict`; Set covers `set` and `frozenset`. With `construction="literal"`, `inputs` are direct elements/entries; with `"builtin"`, they are written argument Models; with `"comprehension"`, one nested comprehension Model is stored, so a `walk()` can contain two value Models with the same source span. List, set, and dict comprehensions carry their clause-bearing Models inside `inputs`; generator expressions are unchanged. Tuple/list destructuring targets are represented separately from values. This changes the public Model Kind and Structure contracts relative to v0.0.2. [Details](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/public.md#collection-construction-models-v003-breaking-change).
-
-### Strict and Partial analysis
-
-- **Strict:** `parse_source()` and `parse_package()` require a complete result and raise on unsupported syntax or invalid structures.
-- **Partial:** `inspect_source()` and `inspect_package()` return available results together with diagnostics when full analysis is not possible.
-
-Use Strict analysis when completeness is required, and Partial analysis to inspect unsupported or incomplete inputs. **An incomplete Partial result must not be treated as a fully analyzed input.** Consult the [API Reference](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/INDEX.md) for details.
-
-For package analysis, pass an `include(path, is_directory)` callback to `parse_package()` or `inspect_package()` to choose subdirectories and matching source files. Returning `False` for a directory prunes that entire subtree. The `extensions=(".py",)` parameter selects source suffixes: `(".dot",)` chooses only `.dot` and `(".py", ".dot")` chooses both. These files must contain Python syntax. By default **all** regular `.py` files are included, including those under `.venv`; shikake does not impose exclusion patterns. See [Package input selection](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/public.md#package-input-extensions-extensions-and-selection-include).
-
-### Optional import permissions
-
-Each parsing/inspection API supports `import_policy="unrestricted"` (default), `"registered_interfaces"` (only explicitly imported registered interfaces), and `"registered_modules"` (registered external modules plus caller-specified `allowed_modules=("math", "custom_tools")`). `registered_modules` also permits every explicit registered-interface import. Both restricted modes admit the single directive `from __future__ import annotations`. Relative imports, including within the analyzed package, remain forbidden: change them to absolute imports and explicitly allow the written module names as needed. `allowed_modules` names must be NFKC-normalized. These checks compare written absolute module names without importing them and do not provide a security sandbox. See the [API Reference](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/public.md#caller-selected-import-restrictions-import_policy-allowed_modules).
-
-## Source comments (v0.0.2)
-
-The explicit `collect_comments(source)` API returns `SourceComments` with immutable `Comment` records, independently of the AST Model tree:
+Matching forms become dedicated Models instead of ordinary type references, subscripts, or calls.
 
 ```python
+from collections import Counter
+
 import shikake
+from shikake.external import ExternalDefinitionsBuilder
 
-source = "# note\nvalue = 1  # type: int\n"
-comments = shikake.collect_comments(source)
-model = shikake.parse_source(source).get_nodes("body")[0]
-if model.span is not None:
-    print(comments.above_line(model.span.line))
-    print(comments.on_right_of_line(model.span.line))
-    print(comments.in_lines(model.span.line, model.span.end_line))
-```
-
-For a function or class, the first statement of its `body` block supplies a line for querying comments immediately above that statement **only if no code appears before the statement on that same line**. For a one-line body such as `def f(): return 1`, this recipe does not apply. For an assignment statement, `span.end_line` supplies a line for querying its trailing comment. For example:
-
-```python
-import shikake
-
-source = "def f():\n    # body note\n    value = 1  # value note\n    return value\n"
-comments = shikake.collect_comments(source)
-function = shikake.parse_source(source).get_nodes("body")[0]
-first = function.get("body").get_nodes("statements")[0]
-if first.span is not None:
-    print(comments.above_line(first.span.line))
-    print(comments.on_right_of_line(first.span.end_line))
-```
-
-The same `body` lookup works for class definitions. To verify the same-line precondition, use the same universal-newline behavior as comment collection (CR, LF, CRLF); **do not use `str.splitlines()`**, which also splits on form feeds and other characters not considered line breaks by the AST:
-
-```python
-import io
-
-lines = io.StringIO(source, newline=None).readlines()
-prefix = lines[first.span.line - 1].encode("utf-8")[: first.span.column]
-if not prefix.strip():
-    print(comments.above_line(first.span.line))
-```
-
-AST columns use UTF-8 byte offsets, so the prefix is measured in encoded bytes.
-
-For a decorated function or class, search above its **earliest decorator** rather than its `def`/`class` line:
-
-```python
-import shikake
-
-source = "# definition note\n\n@decorator\ndef decorated():\n    return 1\n"
-comments = shikake.collect_comments(source)
-function = shikake.parse_source(source).get_nodes("body")[0]
-if function.span is not None:
-    start = min(
-        [function.span.line, *(d.span.line for d in function.get_nodes("decorators") if d.span is not None)]
+definitions = (
+    ExternalDefinitionsBuilder()
+    .add_type("demo.kinds:Int32", "demo.type.int32")
+    .add_generic(
+        "demo.kinds:Vector",
+        "demo.type.vector",
+        ("element", "length"),
     )
-    print(tuple(comment.text for comment in comments.above_line(start)))
-    # ('# definition note',)
+    .add_call(
+        "demo.ops:clamp",
+        "demo.operation.clamp",
+        ("value", "lower", "upper"),
+    )
+    .build()
+)
+
+inspection = shikake.inspect_source(source, definitions=definitions)
+assert inspection.complete and inspection.model is not None
+root = inspection.model
+counts = Counter(node.kind.id for node in root.walk())
+
+for kind in (
+    "model.definition.class",
+    "model.definition.function",
+    "demo.type.int32",
+    "demo.type.vector",
+    "demo.operation.clamp",
+):
+    print(f"{kind}: {counts[kind]}")
 ```
 
-Here `function.span` must be present. These are **line-position queries**, not attachments of comments to declarations or assignments. For comments within multiline constructs, use `in_lines(first, last)`.
+Output:
 
-It also supports `in_lines(first, last)`, `module_header()`, and `module_footer()`. Blank lines do not interrupt upward search; code lines do. CR, LF, and CRLF all use AST-compatible line numbers. For files with encoding declarations or a UTF-8 BOM, read with `tokenize.open(path)` and pass the **same decoded text** to both `collect_comments()` and `parse_source()`. A `SourceComments` result must be obtained from `collect_comments()`; direct construction and `dataclasses.replace()` are unsupported. Results for syntactically invalid Python input are not guaranteed across Python versions. Comments are not assigned to particular Models and type comments are not interpreted. Python AST parsing continues with `type_comments=False`. There is no separate Model-based comment lookup: callers can supply the line numbers from an available `Model.span` to the existing line queries. The module root and other Models may have `span=None`. A line query does not establish ownership, distinguish Models sharing a line, or verify that a Model and comments came from the same source. See the [API Reference](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/INDEX.md) for details.
+```text
+model.definition.class: 1
+model.definition.function: 1
+demo.type.int32: 6
+demo.type.vector: 2
+demo.operation.clamp: 1
+```
 
-## External structures
+Examples of the resulting structure:
 
-Consumers can define custom Kinds and Structures with trusted Shikumi declarations or `shikake.external.ExternalDefinitionsBuilder` and provide them to the parser. For example, a transpiler may map a Python-facing memory or I/O interface to special operations in its target language.
+- **`Vector[Int32, 4]`:** `element` holds `demo.type.int32`; `length` holds the literal value `4`.
+- **`clamp(...)`:** becomes `demo.operation.clamp`.
 
-When their documented conditions are met, explicitly imported calls registered as external operations produce dedicated Models instead of ordinary Python call Models. This is not general-purpose resolution of arbitrary libraries: explicit-import and reserved-name rules constrain recognition. See the [External Definitions API](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/external.md).
+**Kind names describe structure.** shikake does not interpret the semantics of `Int32` or other runtime types.
 
-## Using analysis results
+### 3. Inspect name bindings
 
-Transpilation and restricted-Python validation share a basic pattern: inspect Kind, Structure, and Feature information, optionally consult binding facts and static relationship candidates, and then **apply the consumer's own rules** to translate or accept/reject the input.
+shikake also exposes observations about name introduction and use. This code continues from the previous example:
 
-shikake does not define those downstream rules. Models are intended to be obtained from the official parsing APIs; constructing your own Models is unsupported.
+```python
+method = next(
+    node for node in root.walk()
+    if node.kind.id == "model.definition.method"
+    and node.get_scalar("name") == "accumulate"
+)
 
-## Limitations
+for scope, name in (
+    (root, "Int32"),
+    (root, "clamp"),
+    (method, "total"),
+):
+    state = inspection.bindings_for(scope, name)[0].state
+    print(name, state)
+```
 
-shikake does not execute source code, evaluate values, infer types, or resolve dynamic names. Models do not aim to reproduce the original Python code perfectly or to establish its runtime semantics. Syntactic inspection alone does not provide a secure execution sandbox.
+Output:
 
-See the [API Reference](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/INDEX.md) for individual contracts and the [Documentation Policy](https://github.com/minoru-jp/shikake/blob/HEAD/docs/DOCUMENTATION_POLICY.md) for how the sources are managed.
+```text
+Int32 BindingState(introduction='external', may_rebind=False, may_delete=False, may_value_use=False)
+clamp BindingState(introduction='external', may_rebind=False, may_delete=False, may_value_use=False)
+total BindingState(introduction='stable', may_rebind=True, may_delete=False, may_value_use=True)
+```
+
+The four `BindingState` properties are **lightweight observations**:
+
+- **`introduction`:** how a name was introduced (`Int32` and `clamp` are `external`).
+- **`may_rebind` / `may_delete`:** whether rebinding or deletion was observed.
+- **`may_value_use`:** whether use as a value was observed. Registered Type and Call uses do not count.
+
+For `total`, shikake observes augmented assignment and value use. These properties are not exhaustive name tracking: **`False` does not prove absence.**
+
+## Design: structure without prescribed semantics
+
+shikake deliberately stops at structural modeling rather than fully interpreting Python programs.
+
+- **Describes structure:** Kinds, Structures, Features, source positions, and candidate static relationships.
+- **Observes coarse facts:** name introduction, rebinding, deletion, and value use. No type inference or detailed identifier tracking.
+- **Does not decide semantics:** Python runtime behavior, whether modeled code is acceptable, or what it means in a target language.
+- **Consumers decide:** for example, reject code where rebinding is observed, or define target-language meanings for registered interfaces.
+
+**Boundary:** shikake uses Python syntax and selected scope rules, but does not reproduce full runtime semantics. An unobserved use may still exist. Consumers needing stronger guarantees must perform additional validation.
+
+## Declaring external interfaces with Shikumi
+
+You can declare the same external interfaces using **Shikumi**, which shikake also uses for its own Kinds and Structures.
+
+- **`@=`:** Python's augmented matrix-multiplication syntax used for Shikumi declarations. It is **not interchangeable with `=`**.
+- **Analyzed source:** modeled, but not executed or imported.
+- **Trusted declarations:** imported by the consumer from a separate definition module.
+
+### 1. How shikake declares its own Models
+
+Here is an abbreviated excerpt of shikake's internal declarations. It illustrates the notation, rather than recommending internal imports for applications.
+
+```python
+# Excerpt from shikake's internal declarations
+from shikake._mica.kinds.regulation import (
+    PartContract as Role, kind_id, parent_id,
+    part, structure_id, structure_ref,
+)
+
+class ModuleDefinition:
+    structure_id @= "module_definition"
+    part @= Role("name", "text")
+    part @= Role("body", "nodes")
+
+class Module:
+    kind_id @= "model.module"
+    parent_id @= "model"
+    structure_ref @= "module_definition"
+```
+
+- **`structure_id` / `part`:** declare a Structure and its parts.
+- **`kind_id` / `parent_id` / `structure_ref`:** connect a Kind to a Structure.
+
+External definitions use the public `shikake.external` API, not shikake's internal module.
+
+### 2. Define Type, Generic, and Call interfaces
+
+Save this as **`trusted_definitions.py`**. It describes the same `Int32`, `Vector`, and `clamp` interfaces as the preceding example.
+
+```python
+# trusted_definitions.py (a trusted declaration module)
+from shikake.external import (
+    Argument, ImportedCall, ImportedGeneric, ImportedType, Role,
+    bind, emit, kind_id, match, match_generic, match_type,
+    parent_id, part, slot, structure_id, structure_ref,
+)
+
+class Int32Structure:
+    structure_id @= "demo.type.int32.type"
+
+class Int32Kind:
+    kind_id @= "demo.type.int32"
+    parent_id @= "model.value"
+    structure_ref @= "demo.type.int32.type"
+
+class Int32Use:
+    match_type @= ImportedType("demo.kinds:Int32")
+    emit @= "demo.type.int32"
+
+class VectorStructure:
+    structure_id @= "demo.type.vector.generic"
+    part @= Role("element", "node")
+    part @= Role("length", "node")
+
+class VectorKind:
+    kind_id @= "demo.type.vector"
+    parent_id @= "model.value"
+    structure_ref @= "demo.type.vector.generic"
+
+class VectorUse:
+    match_generic @= ImportedGeneric("demo.kinds:Vector")
+    emit @= "demo.type.vector"
+    slot @= "element"
+    slot @= "length"
+
+class ClampStructure:
+    structure_id @= "demo.operation.clamp.arguments"
+    part @= Role("value", "node")
+    part @= Role("lower", "node")
+    part @= Role("upper", "node")
+
+class ClampKind:
+    kind_id @= "demo.operation.clamp"
+    parent_id @= "model.value"
+    structure_ref @= "demo.operation.clamp.arguments"
+
+class ClampUse:
+    match @= ImportedCall("demo.ops:clamp")
+    emit @= "demo.operation.clamp"
+    bind @= Argument("value", 0, "value")
+    bind @= Argument("lower", 1, "lower")
+    bind @= Argument("upper", 2, "upper")
+```
+
+- **Type:** `match_type` selects the name; the Structure has no parts.
+- **Generic:** `match_generic` and `slot` describe the `[...]` arguments.
+- **Call:** `match` and `bind` map the `(...)` arguments.
+- **Shared:** `emit` names the Kind; imported targets use `module:name`.
+
+### 3. Load the declarations
+
+Shikumi validates the trusted declarations, which can then be supplied to shikake using the same `source` from the earlier example.
+
+```python
+import shikake
+import trusted_definitions
+from shikake.external import load_external_definitions
+
+definitions = load_external_definitions(trusted_definitions)
+root = shikake.parse_source(source, definitions=definitions)
+print([node.kind.id for node in root.walk()].count("demo.operation.clamp"))
+# 1
+```
+
+These declarations specify **how to model** a form, not its runtime meaning or whether a consumer should accept it. See the [External Definitions API](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/external.md) for details.
+
+## Working with Models
+
+- **Model traversal:** explore `walk()`, Kinds, Structures, Features, and source positions.
+- **Structural relationships:** inspect candidate base-class references and same-name method overrides.
+- **External definitions:** register Call, Type, and Generic interfaces through the Python API or trusted Shikumi declarations.
+- **Analysis modes:** use `parse_source()` / `parse_package()` for complete results and `inspect_source()` / `inspect_package()` for results with diagnostics.
+- **Import checks:** consumers may delegate allow/deny checks through `ImportPolicy`. Star imports are represented, but their implicit name introductions and binding effects are not inferred.
+
+For exact contracts and limitations, see the [API Reference](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/INDEX.md) for exact contracts and limitations.
 
 ## Documentation
 
-[API Reference](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/INDEX.md) | [Status](https://github.com/minoru-jp/shikake/blob/HEAD/docs/STATUS.md) | [Changelog](https://github.com/minoru-jp/shikake/blob/HEAD/CHANGELOG.md) | [Documentation Policy](https://github.com/minoru-jp/shikake/blob/HEAD/docs/DOCUMENTATION_POLICY.md)
+- [API Reference](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/INDEX.md): public APIs and detailed contracts
+- [STATUS](https://github.com/minoru-jp/shikake/blob/HEAD/docs/STATUS.md): current development status and known limitations
+- [CHANGELOG](https://github.com/minoru-jp/shikake/blob/HEAD/CHANGELOG.md): changes by release
+- [Documentation Policy](https://github.com/minoru-jp/shikake/blob/HEAD/docs/DOCUMENTATION_POLICY.md): canonical sources and publication workflow
 
 ## License
 
-shikake is distributed under the [MIT License](https://github.com/minoru-jp/shikake/blob/HEAD/LICENSE).
+[MIT License](https://github.com/minoru-jp/shikake/blob/HEAD/LICENSE)

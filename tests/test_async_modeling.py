@@ -35,10 +35,11 @@ def definition(root: Model, name: str) -> Model:
 class AsyncModelingTests(unittest.TestCase):
     def test_kind_structure_feature_independence(self) -> None:
         index = shikake.kind_index()
-        self.assertEqual(len(index.all_kinds()), 143)
+        self.assertEqual(len(index.all_kinds()), 142)
         self.assertEqual(len(index.all_structures()), 62)
         self.assertEqual(
-            [feature.id for feature in index.all_features()], ["async", "lazy"]
+            [feature.id for feature in index.all_features()],
+            ["async", "generator", "lazy"],
         )
         self.assertIs(
             index.require_structure("model.value.await"),
@@ -52,7 +53,6 @@ class AsyncModelingTests(unittest.TestCase):
         for kind in (
             "model.definition.function",
             "model.definition.method",
-            "model.definition.generator",
             "model.statement.control.iteration",
             "model.statement.control.context_block",
             "model.structural_part.comprehension_clause",
@@ -65,9 +65,7 @@ class AsyncModelingTests(unittest.TestCase):
         ):
             with self.subTest(kind=kind), self.assertRaises(ValueError):
                 index.validate_features(kind, ("async",))
-        self.assertFalse(
-            index.is_a("model.definition.generator", "model.definition.function")
-        )
+        index.validate_features("model.definition.method", ("generator",))
 
     def test_function_method_generator_and_header_info(self) -> None:
         source = """
@@ -97,19 +95,26 @@ class Service:
         self.assertEqual(plain.features, ("async",))
         self.assertEqual(model(plain, "returns").get("name"), "int")
         stream = definition(root, "stream")
-        self.assertEqual(stream.kind.id, "model.definition.generator")
-        self.assertEqual(stream.features, ("async",))
+        self.assertEqual(stream.kind.id, "model.definition.function")
+        self.assertEqual(stream.features, ("async", "generator"))
         service = definition(root, "Service")
         members = models(model(service, "body"), "statements")
         self.assertEqual(
             [member.kind.id for member in members],
             [
                 "model.definition.method",
-                "model.definition.generator",
+                "model.definition.method",
                 "model.definition.method",
             ],
         )
-        self.assertTrue(all(member.features == ("async",) for member in members))
+        self.assertEqual(
+            [m.features for m in members],
+            [
+                ("async",),
+                ("async", "generator"),
+                ("async",),
+            ],
+        )
         await_node = next(
             node for node in members[0].walk() if node.kind.id == "model.value.await"
         )
@@ -117,8 +122,8 @@ class Service:
             model(model(await_node, "value"), "callee").get("name"), "remote"
         )
         nested = models(model(members[-1], "body"), "statements")[0]
-        self.assertEqual(nested.kind.id, "model.definition.generator")
-        self.assertEqual(nested.features, ("async",))
+        self.assertEqual(nested.kind.id, "model.definition.function")
+        self.assertEqual(nested.features, ("async", "generator"))
         self.assertEqual(members[-1].kind.id, "model.definition.method")
 
     def test_async_for_and_with_keep_written_parts(self) -> None:
@@ -246,9 +251,9 @@ async def process(stream):
             parsed = shikake.parse_package(folder)
             self.assertEqual(len(parsed.override_candidates), 1)
             candidate = parsed.override_candidates[0]
-            self.assertEqual(candidate.method.kind.id, "model.definition.generator")
+            self.assertEqual(candidate.method.kind.id, "model.definition.method")
+            self.assertEqual(candidate.method.features, ("async", "generator"))
             self.assertEqual(candidate.base_method.kind.id, "model.definition.method")
-            self.assertEqual(candidate.method.features, ("async",))
             self.assertEqual(candidate.base_method.features, ("async",))
 
     def test_model_factory_still_checks_feature_applicability(self) -> None:

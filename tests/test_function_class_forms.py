@@ -44,7 +44,7 @@ class FunctionClassModelTests(unittest.TestCase):
         self.assertTrue(shikake.inspect_source(self.source).complete)
         index = shikake.kind_index()
         kinds = index.all_kinds()
-        self.assertEqual(len(kinds), 143)
+        self.assertEqual(len(kinds), 142)
         self.assertEqual(len({kind.id for kind in kinds}), len(kinds))
         nodes = tuple(self.root.walk())
         self.assertEqual(len(nodes), 170)

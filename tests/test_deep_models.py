@@ -72,7 +72,7 @@ class DeepModelTests(unittest.TestCase):
         body = cast(tuple[Model, ...], function.get("body"))
         self.assertEqual(body[0].kind.id, "model.definition.function")
         gen_body = cast(tuple[Model, ...], generator.get("body"))
-        self.assertEqual(gen_body[0].kind.id, "model.definition.generator")
+        self.assertEqual(gen_body[0].kind.id, "model.definition.function")
         self.assertGreater(len(list(generator.walk())), 500)
         self.assertTrue(inspect_source(function_source).complete)
 
@@ -112,7 +112,7 @@ class DeepModelTests(unittest.TestCase):
         )
         functions = cast(tuple[Model, ...], model.get("body"))
         self.assertEqual(functions[0].kind.id, "model.definition.function")
-        self.assertEqual(functions[1].kind.id, "model.definition.generator")
+        self.assertEqual(functions[1].kind.id, "model.definition.function")
         self.assertGreater(len(list(model.walk())), 12000)
 
     def test_deep_mixed_access_chain(self) -> None:

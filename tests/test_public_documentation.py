@@ -48,7 +48,18 @@ class PublicDocumentationTests(unittest.TestCase):
     ) -> None:
         base = "https://github.com/minoru-jp/shikake/blob/HEAD/"
         urls = re.findall(r"\]\(([^)]+)\)", (ROOT / "README.md").read_text())
-        self.assertGreaterEqual(len(urls), 8)
+        # The example-led README intentionally links to fewer destinations.
+        self.assertEqual(
+            {url.removeprefix(base) for url in urls},
+            {
+                "docs/STATUS.md",
+                "docs/api_reference/INDEX.md",
+                "docs/api_reference/external.md",
+                "CHANGELOG.md",
+                "docs/DOCUMENTATION_POLICY.md",
+                "LICENSE",
+            },
+        )
         for url in urls:
             with self.subTest(url=url):
                 self.assertTrue(url.startswith(base), url)

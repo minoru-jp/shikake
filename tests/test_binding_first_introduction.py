@@ -40,6 +40,7 @@ class BindingFirstIntroductionTests(unittest.TestCase):
                         "stable" if not source.startswith("with") else "unstable",
                         False,
                         False,
+                        False,
                     ),
                 )
 
@@ -56,21 +57,21 @@ class BindingFirstIntroductionTests(unittest.TestCase):
     def test_conditional_single_write_is_not_automatically_a_rebind(self) -> None:
         self.assertEqual(
             self.state("if flag:\n    x = 1", "x"),
-            shikake.BindingState("unstable", False, False),
+            shikake.BindingState("unstable", False, False, False),
         )
 
     def test_augmented_assignment_cannot_stably_introduce(self) -> None:
         self.assertEqual(
             self.state("n += 1", "n"),
-            shikake.BindingState("unstable", True, False),
+            shikake.BindingState("unstable", True, False, False),
         )
         self.assertEqual(
             self.state("n = 0\nn += 1", "n"),
-            shikake.BindingState("stable", True, False),
+            shikake.BindingState("stable", True, False, False),
         )
         self.assertEqual(
             self.state("n += 1\nn = 0", "n"),
-            shikake.BindingState("unstable", True, False),
+            shikake.BindingState("unstable", True, False, False),
         )
 
     def test_repeatable_writes(self) -> None:
@@ -91,7 +92,9 @@ class BindingFirstIntroductionTests(unittest.TestCase):
         )
         self.assertTrue(result.complete)
         (local,) = [binding for binding in result.name_bindings if binding.name == "x"]
-        self.assertEqual(local.state, shikake.BindingState("stable", False, False))
+        self.assertEqual(
+            local.state, shikake.BindingState("stable", False, False, False)
+        )
 
     def test_class_candidates_survive_rebindings_and_conditional_imports(self) -> None:
         import tempfile
@@ -115,7 +118,7 @@ class BindingFirstIntroductionTests(unittest.TestCase):
         )
         self.assertEqual(len(reference.targets), 2)
         self.assertEqual(
-            reference.binding, shikake.BindingState("unstable", True, False)
+            reference.binding, shikake.BindingState("unstable", True, False, False)
         )
         self.assertEqual(len(result.override_candidates), 2)
 

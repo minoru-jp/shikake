@@ -60,21 +60,21 @@ class SingleSourceBindingsTests(unittest.TestCase):
         self.assertFalse(result.complete)
         self.assertEqual(result.name_bindings, ())
 
-    def test_incomplete_local_external_model_has_no_bindings(self) -> None:
+    def test_unregistered_external_call_keeps_bindings(self) -> None:
         result = shikake.inspect_source(
             "from framework.memory import Memory\nok = 1\nbad = Memory.unknown(2)\n",
             definitions=memory,
         )
-        self.assertIsNotNone(result.model)
-        self.assertFalse(result.complete)
-        self.assertEqual(result.name_bindings, ())
+        self.assertTrue(result.complete, result.issues)
+        self.assertTrue(result.name_bindings)
 
-    def test_file_wide_external_violation_has_no_bindings(self) -> None:
+    def test_external_rebinding_keeps_bindings(self) -> None:
         result = shikake.inspect_source(
             "from framework.memory import Memory\nMemory = 5\n", definitions=memory
         )
-        self.assertIsNone(result.model)
-        self.assertEqual(result.name_bindings, ())
+        self.assertTrue(result.complete, result.issues)
+        assert result.model is not None
+        self.assertTrue(result.bindings_for(result.model, "Memory")[0].state.may_rebind)
 
     def test_existing_source_inspection_positional_construction(self) -> None:
         result = shikake.SourceInspection(None, ())

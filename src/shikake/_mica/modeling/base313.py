@@ -33,151 +33,191 @@ def select_override(node: ast.expr) -> ExpressionPlan | None:
     return None
 
 
-def build_expression(builder: _Builder, node: ast.expr) -> Model:
+_BINARY_OPS = {
+    ast.Add: "addition",
+    ast.Sub: "subtraction",
+    ast.Mult: "multiplication",
+    ast.MatMult: "matrix_multiplication",
+    ast.Div: "division",
+    ast.FloorDiv: "floor_division",
+    ast.Mod: "modulo",
+    ast.Pow: "power",
+    ast.LShift: "left_shift",
+    ast.RShift: "right_shift",
+    ast.BitAnd: "bitwise_and",
+    ast.BitOr: "bitwise_or",
+    ast.BitXor: "bitwise_xor",
+}
+_UNARY_OPS = {
+    ast.Not: "model.value.operation.not",
+    ast.UAdd: "model.value.operation.positive",
+    ast.USub: "model.value.operation.negative",
+    ast.Invert: "model.value.operation.bitwise_invert",
+}
+_COMPARISON_KINDS = {
+    ast.Eq: ("equal", "=="),
+    ast.NotEq: ("not_equal", "!="),
+    ast.Lt: ("less", "<"),
+    ast.LtE: ("less_equal", "<="),
+    ast.Gt: ("greater", ">"),
+    ast.GtE: ("greater_equal", ">="),
+    ast.Is: ("is", "is"),
+    ast.IsNot: ("is_not", "is not"),
+    ast.In: ("in", "in"),
+    ast.NotIn: ("not_in", "not in"),
+}
+
+
+def _expression_children(builder: _Builder, current: ast.expr) -> tuple[ast.expr, ...]:
+    """Choose the AST children to visit before constructing this expression.
+
+    Child selection and Model construction are separate steps: the worklist
+    remains iterative and neither pass attempts value/type inference.
+    """
+    if isinstance(current, ast.BoolOp):
+        if not isinstance(current.op, (ast.And, ast.Or)):
+            raise UnsupportedSyntaxError(
+                current, f"operator {type(current.op).__name__}"
+            )
+        children = tuple(current.values)
+    elif isinstance(current, ast.BinOp):
+        if type(current.op) not in _BINARY_OPS:
+            raise UnsupportedSyntaxError(
+                current, f"operator {type(current.op).__name__}"
+            )
+        children = (current.left, current.right)
+    elif isinstance(current, ast.UnaryOp):
+        if type(current.op) not in _UNARY_OPS:
+            raise UnsupportedSyntaxError(
+                current, f"operator {type(current.op).__name__}"
+            )
+        children = (current.operand,)
+    elif isinstance(current, ast.Attribute):
+        children = (current.value,)
+    elif isinstance(current, ast.Subscript):
+        children = (current.value, current.slice)
+    elif isinstance(current, ast.IfExp):
+        children = (current.test, current.body, current.orelse)
+    elif isinstance(current, ast.Call):
+        # Arguments are checked before the callee, as previously.
+        children = (
+            *(
+                arg.value if isinstance(arg, ast.Starred) else arg
+                for arg in current.args
+            ),
+            *(kw.value for kw in current.keywords),
+            current.func,
+        )
+    elif isinstance(current, ast.Lambda):
+        children = (
+            *builder._parameter_expressions(current.args),
+            current.body,
+        )
+    elif isinstance(current, ast.Slice):
+        children = tuple(
+            child
+            for child in (current.lower, current.upper, current.step)
+            if child is not None
+        )
+    elif isinstance(current, (ast.Await, ast.Yield, ast.YieldFrom, ast.Starred)):
+        children = (current.value,) if current.value is not None else ()
+    elif isinstance(current, ast.JoinedStr):
+        children = tuple(current.values)
+    elif isinstance(current, ast.FormattedValue):
+        if current.conversion not in (-1, ord("s"), ord("r"), ord("a")):
+            raise UnsupportedSyntaxError(
+                current, "unknown string interpolation conversion"
+            )
+        children = (
+            (current.value, current.format_spec)
+            if current.format_spec is not None
+            else (current.value,)
+        )
+    elif isinstance(current, ast.NamedExpr):
+        children = (current.value,)
+    elif isinstance(current, (ast.Tuple, ast.List, ast.Set)):
+        children = tuple(current.elts)
+    elif isinstance(current, ast.Dict):
+        children = tuple(
+            child
+            for key, value in zip(current.keys, current.values, strict=True)
+            for child in ((key, value) if key is not None else (value,))
+        )
+    elif isinstance(
+        current, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)
+    ):
+        if isinstance(current, ast.DictComp) and current.value is None:
+            raise UnsupportedSyntaxError(
+                current, "dictionary comprehension without value"
+            )
+        children = comprehension_children(current)
+    elif isinstance(current, ast.Compare):
+        if not current.ops or any(
+            type(op) not in _COMPARISON_KINDS for op in current.ops
+        ):
+            raise UnsupportedSyntaxError(current, "unknown comparison operator")
+        children = (current.left, *current.comparators)
+    elif isinstance(current, (ast.Name, ast.Constant)):
+        children = ()
+    else:
+        raise UnsupportedSyntaxError(current)
+    return children
+
+
+def build_expression(
+    builder: _Builder, node: ast.expr, *, type_context: bool = False
+) -> Model:
     """Build expression Models bottom-up without recursive expression calls.
 
     All supported expression families share this worklist. Comprehension
     targets and lambda parameters are delegated to their dedicated shape
     builders, which do not descend into the containing expression node.
     """
-    binary_ops = {
-        ast.Add: "addition",
-        ast.Sub: "subtraction",
-        ast.Mult: "multiplication",
-        ast.MatMult: "matrix_multiplication",
-        ast.Div: "division",
-        ast.FloorDiv: "floor_division",
-        ast.Mod: "modulo",
-        ast.Pow: "power",
-        ast.LShift: "left_shift",
-        ast.RShift: "right_shift",
-        ast.BitAnd: "bitwise_and",
-        ast.BitOr: "bitwise_or",
-        ast.BitXor: "bitwise_xor",
-    }
-    unary_ops = {
-        ast.Not: "model.value.operation.not",
-        ast.UAdd: "model.value.operation.positive",
-        ast.USub: "model.value.operation.negative",
-        ast.Invert: "model.value.operation.bitwise_invert",
-    }
-    comparison_kinds = {
-        ast.Eq: ("equal", "=="),
-        ast.NotEq: ("not_equal", "!="),
-        ast.Lt: ("less", "<"),
-        ast.LtE: ("less_equal", "<="),
-        ast.Gt: ("greater", ">"),
-        ast.GtE: ("greater_equal", ">="),
-        ast.Is: ("is", "is"),
-        ast.IsNot: ("is_not", "is not"),
-        ast.In: ("in", "in"),
-        ast.NotIn: ("not_in", "not in"),
-    }
     f = builder.factory
-    pending: list[tuple[ast.expr, bool]] = [(node, False)]
+    pending: list[tuple[ast.expr, bool, bool]] = [(node, False, type_context)]
     built: dict[ast.expr, Model] = {}
     planned: dict[ast.expr, ExpressionPlan] = {}
     while pending:
-        current, ready = pending.pop()
+        current, ready, in_type = pending.pop()
         if not ready:
             # Newer syntax owns its AST shape before the 3.13 baseline can claim it.
             override = select_override(current)
             if override is not None:
                 planned[current] = override
-                pending.append((current, True))
-                pending.extend((child, False) for child in reversed(override.children))
+                pending.append((current, True, in_type))
+                pending.extend(
+                    (child, False, in_type) for child in reversed(override.children)
+                )
                 continue
-            if isinstance(current, ast.BoolOp):
-                if not isinstance(current.op, (ast.And, ast.Or)):
-                    raise UnsupportedSyntaxError(
-                        current, f"operator {type(current.op).__name__}"
-                    )
-                children = tuple(current.values)
-            elif isinstance(current, ast.BinOp):
-                if type(current.op) not in binary_ops:
-                    raise UnsupportedSyntaxError(
-                        current, f"operator {type(current.op).__name__}"
-                    )
-                children = (current.left, current.right)
-            elif isinstance(current, ast.UnaryOp):
-                if type(current.op) not in unary_ops:
-                    raise UnsupportedSyntaxError(
-                        current, f"operator {type(current.op).__name__}"
-                    )
-                children = (current.operand,)
-            elif isinstance(current, ast.Attribute):
-                children = (current.value,)
-            elif isinstance(current, ast.Subscript):
-                children = (current.value, current.slice)
-            elif isinstance(current, ast.IfExp):
-                children = (current.test, current.body, current.orelse)
-            elif isinstance(current, ast.Call):
-                # Arguments are checked before the callee, as previously.
-                children = (
-                    *(
-                        arg.value if isinstance(arg, ast.Starred) else arg
-                        for arg in current.args
-                    ),
-                    *(kw.value for kw in current.keywords),
-                    current.func,
+            children = _expression_children(builder, current)
+            pending.append((current, True, in_type))
+            # Generic application is syntax, not value-reference, including
+            # types nested inside its arguments. No general type inference.
+            generic = (
+                builder.external.generic_mapping(current.value)
+                if isinstance(current, ast.Subscript) and builder.external is not None
+                else None
+            )
+            generic_slice = (
+                current.slice
+                if isinstance(current, ast.Subscript) and generic is not None
+                else None
+            )
+            parameter_annotations = (
+                builder._annotation_expressions(current.args)
+                if isinstance(current, ast.Lambda)
+                else frozenset()
+            )
+            pending.extend(
+                (
+                    child,
+                    False,
+                    in_type
+                    or (child is generic_slice)
+                    or child in parameter_annotations,
                 )
-            elif isinstance(current, ast.Lambda):
-                children = (
-                    *builder._parameter_expressions(current.args),
-                    current.body,
-                )
-            elif isinstance(current, ast.Slice):
-                children = tuple(
-                    child
-                    for child in (current.lower, current.upper, current.step)
-                    if child is not None
-                )
-            elif isinstance(
-                current, (ast.Await, ast.Yield, ast.YieldFrom, ast.Starred)
-            ):
-                children = (current.value,) if current.value is not None else ()
-            elif isinstance(current, ast.JoinedStr):
-                children = tuple(current.values)
-            elif isinstance(current, ast.FormattedValue):
-                if current.conversion not in (-1, ord("s"), ord("r"), ord("a")):
-                    raise UnsupportedSyntaxError(
-                        current, "unknown string interpolation conversion"
-                    )
-                children = (
-                    (current.value, current.format_spec)
-                    if current.format_spec is not None
-                    else (current.value,)
-                )
-            elif isinstance(current, ast.NamedExpr):
-                children = (current.value,)
-            elif isinstance(current, (ast.Tuple, ast.List, ast.Set)):
-                children = tuple(current.elts)
-            elif isinstance(current, ast.Dict):
-                children = tuple(
-                    child
-                    for key, value in zip(current.keys, current.values, strict=True)
-                    for child in ((key, value) if key is not None else (value,))
-                )
-            elif isinstance(
-                current, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)
-            ):
-                if isinstance(current, ast.DictComp) and current.value is None:
-                    raise UnsupportedSyntaxError(
-                        current, "dictionary comprehension without value"
-                    )
-                children = comprehension_children(current)
-            elif isinstance(current, ast.Compare):
-                if not current.ops or any(
-                    type(op) not in comparison_kinds for op in current.ops
-                ):
-                    raise UnsupportedSyntaxError(current, "unknown comparison operator")
-                children = (current.left, *current.comparators)
-            elif isinstance(current, (ast.Name, ast.Constant)):
-                children = ()
-            else:
-                raise UnsupportedSyntaxError(current)
-            pending.append((current, True))
-            pending.extend((child, False) for child in reversed(children))
+                for child in reversed(children)
+            )
             continue
 
         override = planned.pop(current, None)
@@ -186,7 +226,16 @@ def build_expression(builder: _Builder, node: ast.expr) -> Model:
             continue
         span = _span(current)
         if isinstance(current, ast.Name):
-            model = f.make("model.value.named", span=span, name=current.id)
+            type_mapping = (
+                builder.external.type_mapping(current)
+                if in_type and builder.external is not None
+                else None
+            )
+            model = (
+                f.make(type_mapping.kind_id, span=span)
+                if type_mapping is not None
+                else f.make("model.value.named", span=span, name=current.id)
+            )
         elif isinstance(current, ast.Constant):
             value = current.value
             if value is None:
@@ -216,30 +265,53 @@ def build_expression(builder: _Builder, node: ast.expr) -> Model:
             )
         elif isinstance(current, ast.BinOp):
             model = f.make(
-                f"model.value.operation.{binary_ops[type(current.op)]}",
+                f"model.value.operation.{_BINARY_OPS[type(current.op)]}",
                 span=span,
                 left=built.pop(current.left),
                 right=built.pop(current.right),
             )
         elif isinstance(current, ast.UnaryOp):
             model = f.make(
-                unary_ops[type(current.op)],
+                _UNARY_OPS[type(current.op)],
                 span=span,
                 operand=built.pop(current.operand),
             )
         elif isinstance(current, ast.Attribute):
-            model = f.make(
-                "model.value.access.attribute",
-                span=span,
-                target=built.pop(current.value),
-                attribute=current.attr,
+            type_mapping = (
+                builder.external.type_mapping(current)
+                if in_type and builder.external is not None
+                else None
             )
+            if type_mapping is not None:
+                built.pop(current.value)
+                model = f.make(type_mapping.kind_id, span=span)
+            else:
+                model = f.make(
+                    "model.value.access.attribute",
+                    span=span,
+                    target=built.pop(current.value),
+                    attribute=current.attr,
+                )
         elif isinstance(current, ast.Subscript):
-            model = f.make(
-                "model.value.access.index",
-                span=span,
-                target=built.pop(current.value),
-                index=built.pop(current.slice),
+            generic_mapping = (
+                builder.external.generic_mapping(current.value)
+                if builder.external is not None
+                else None
+            )
+            specialized = (
+                builder.external.try_build_generic(current, generic_mapping, built, f)
+                if generic_mapping is not None and builder.external is not None
+                else None
+            )
+            model = (
+                specialized
+                if specialized is not None
+                else f.make(
+                    "model.value.access.index",
+                    span=span,
+                    target=built.pop(current.value),
+                    index=built.pop(current.slice),
+                )
             )
         elif isinstance(current, ast.IfExp):
             model = f.make(
@@ -256,10 +328,12 @@ def build_expression(builder: _Builder, node: ast.expr) -> Model:
                 else None
             )
             if mapping is not None and builder.external is not None:
-                built[current] = builder.external.build(
+                external_model = builder.external.try_build(
                     current, mapping, built, f, span=span
                 )
-                continue
+                if external_model is not None:
+                    built[current] = external_model
+                    continue
             call_parts: list[tuple[ast.AST, Model]] = []
             for arg in current.args:
                 item = (
@@ -393,7 +467,7 @@ def build_expression(builder: _Builder, node: ast.expr) -> Model:
         ):
             model = build_comprehension(current, built, builder)
         elif isinstance(current, ast.Compare):
-            operators = [comparison_kinds[type(op)] for op in current.ops]
+            operators = [_COMPARISON_KINDS[type(op)] for op in current.ops]
             if len(operators) == 1:
                 model = f.make(
                     f"model.value.operation.comparison.{operators[0][0]}",
@@ -474,7 +548,7 @@ def build_statement(
             span=span,
             name=name_node.id,
             type_parameters=builder._type_parameters(getattr(alias, "type_params", ())),
-            value=builder.expression(value),
+            value=builder.expression(value, type_context=True),
         )
     if isinstance(node, ast.AnnAssign):
         # A bare, simple name retains the established Variable definition.
@@ -485,7 +559,7 @@ def build_statement(
                 "model.definition.variable",
                 span=span,
                 name=node.target.id,
-                annotation=builder.expression(node.annotation),
+                annotation=builder.expression(node.annotation, type_context=True),
                 initializer=builder.expression(node.value)
                 if node.value is not None
                 else None,
@@ -494,7 +568,7 @@ def build_statement(
             "model.statement.assignment.annotated",
             span=span,
             target=builder.target(node.target),
-            annotation=builder.expression(node.annotation),
+            annotation=builder.expression(node.annotation, type_context=True),
             value=builder.expression(node.value) if node.value is not None else None,
             simple=bool(node.simple),
         )
@@ -504,7 +578,9 @@ def build_statement(
             span=span,
             name=node.name,
             type_parameters=builder._type_parameters(getattr(node, "type_params", ())),
-            bases=tuple(builder.expression(base) for base in node.bases),
+            bases=tuple(
+                builder.expression(base, type_context=True) for base in node.bases
+            ),
             keywords=tuple(
                 f.make(
                     "model.structural_part.keyword_argument",

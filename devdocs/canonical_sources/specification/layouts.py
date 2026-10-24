@@ -74,7 +74,7 @@ class LAYOUTS:
         level @= MUST
         related @= (MODEL.SPEC_004, MODEL.SPEC_005)
         detail @= "roles: name:text, parameters:nodes, type_parameters:nodes, decorators:nodes, returns:optional_node, body:node"
-        detail @= "kinds: model.definition.function, model.definition.method, model.definition.generator"
+        detail @= "kinds: model.definition.function, model.definition.method"
 
     class SPEC_007:
         """Structure `chained_comparison` のrole/shapeを記述順に保持する。"""

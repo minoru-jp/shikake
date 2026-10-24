@@ -2,7 +2,7 @@
 
 from .base_references import BaseReference
 from .comments import Comment, SourceComments, collect_comments
-from .external_structures import ExternalModelingError
+from .import_policy import ImportPolicy, ImportPolicyError
 from .inspection import (
     InspectionIssue,
     PackageInspection,
@@ -22,8 +22,9 @@ __all__ = [
     "BaseReference",
     "BindingState",
     "Comment",
-    "ExternalModelingError",
     "Feature",
+    "ImportPolicy",
+    "ImportPolicyError",
     "InspectionIssue",
     "Kind",
     "KindIndex",

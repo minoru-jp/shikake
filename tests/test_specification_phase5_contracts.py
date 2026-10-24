@@ -87,7 +87,7 @@ class SpecificationPhase5ContractTests(unittest.TestCase):
             self.assertIs(binding.scope, function)
             self.assertEqual(binding.name, "P")
             self.assertEqual(
-                binding.state, shikake.BindingState("stable", False, False)
+                binding.state, shikake.BindingState("stable", False, False, True)
             )
             self.assertEqual(empty.bindings_for(module, "P"), ())
             with self.assertRaises(ValueError):
@@ -114,7 +114,7 @@ class SpecificationPhase5ContractTests(unittest.TestCase):
             )
             self.assertEqual(
                 references["DirectChild"].binding,
-                shikake.BindingState("stable", False, False),
+                shikake.BindingState("stable", False, False, False),
             )
 
     @unittest.skipUnless(sys.version_info >= (3, 12), "requires Python 3.12+")

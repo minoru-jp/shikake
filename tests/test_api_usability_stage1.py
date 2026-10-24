@@ -36,41 +36,35 @@ class DiagnosticCodesTests(unittest.TestCase):
         self.assertEqual(issue.details["node_type"], "TypeAlias")
         self.assertIsNotNone(issue.skipped_span)
 
-    def test_unregistered_external_call_has_structured_target(self) -> None:
+    def test_unregistered_external_call_is_an_ordinary_model(self) -> None:
         source = "from framework.memory import Memory\ny = Memory.tan(1)\n"
         result = shikake.inspect_source(source, definitions=definitions)
-        self.assertFalse(result.complete)
-        self.assertIsNotNone(result.model)  # Local errors omit only the bad statement.
-        (issue,) = result.issues
-        self.assertEqual(issue.category, "external_definition")
-        self.assertEqual(issue.code, "external.unregistered_call")
-        self.assertEqual(issue.details, {"target": "Memory.tan"})
-        with self.assertRaises(TypeError):
-            issue.details["target"] = "modified"  # type: ignore[index]
-        with self.assertRaises(shikake.ExternalModelingError) as caught:
-            shikake.parse_source(source, definitions=definitions)
-        self.assertEqual(caught.exception.code, issue.code)
-        self.assertEqual(caught.exception.details, issue.details)
+        self.assertTrue(result.complete, result.issues)
+        assert result.model is not None
+        self.assertIn("model.value.call", {m.kind.id for m in result.model.walk()})
+        self.assertEqual(
+            shikake.parse_source(source, definitions=definitions), result.model
+        )
 
-    def test_reserved_name_rebound_has_structured_name(self) -> None:
+    def test_external_import_rebind_has_ordinary_binding_fact(self) -> None:
         source = "from framework.memory import Memory\nMemory = 1\n"
         result = shikake.inspect_source(source, definitions=definitions)
-        (issue,) = result.issues
-        self.assertEqual(issue.code, "external.reserved_name_rebound")
-        self.assertEqual(issue.details["name"], "Memory")
+        self.assertTrue(result.complete)
+        assert result.model is not None
+        (binding,) = result.bindings_for(result.model, "Memory")
+        self.assertTrue(binding.state.may_rebind)
 
-    def test_argument_mismatch_carries_keyword_not_message_parsing(self) -> None:
+    def test_argument_mismatch_falls_back_to_generic_call(self) -> None:
         source = "from framework.memory import Memory\ny = Memory.new()\n"
         result = shikake.inspect_source(source, definitions=definitions)
-        (issue,) = result.issues
-        self.assertEqual(issue.code, "external.argument_mismatch")
-        self.assertEqual(issue.details["keyword"], "size")
+        self.assertTrue(result.complete)
+        self.assertIn("model.value.call", {m.kind.id for m in result.model.walk()})  # type: ignore[union-attr]
 
-    def test_unknown_keyword_code(self) -> None:
+    def test_unknown_keyword_falls_back_to_generic_call(self) -> None:
         source = "from framework.memory import Memory\ny = Memory.new(unexpected=1)\n"
         result = shikake.inspect_source(source, definitions=definitions)
-        (issue,) = result.issues
-        self.assertEqual(issue.code, "external.unknown_keyword")
+        self.assertTrue(result.complete)
+        self.assertIn("model.value.call", {m.kind.id for m in result.model.walk()})  # type: ignore[union-attr]
 
     def test_manually_created_issue_copies_mutable_details(self) -> None:
         original: dict[str, str | int] = {"target": "sample"}

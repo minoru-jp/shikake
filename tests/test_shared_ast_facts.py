@@ -29,12 +29,12 @@ class SharedASTFactsTests(unittest.TestCase):
             any(isinstance(node, ast.Attribute) for node, _ in facts.references)
         )
 
-    def test_conditional_external_import_is_rejected(self) -> None:
+    def test_conditional_external_import_remains_a_model(self) -> None:
         source = (
             "if flag:\n    from framework.memory import Memory\nx = Memory.new(1)\n"
         )
-        with self.assertRaises(shikake.ExternalModelingError):
-            shikake.parse_source(source, definitions=definitions)
+        model = shikake.parse_source(source, definitions=definitions)
+        self.assertIn("model.value.call", {m.kind.id for m in model.walk()})
 
     def test_elif_named_expression_is_tracked_as_written_binding(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -53,7 +53,9 @@ class SharedASTFactsTests(unittest.TestCase):
         reference = package.base_references[-1]
         self.assertTrue(reference.binding.may_rebind)  # type: ignore[union-attr]
 
-    def test_scope_changes_are_module_local_and_external_use_is_strict(self) -> None:
+    def test_scope_changes_are_module_local_and_external_values_remain_models(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary) / "sample"
             folder.mkdir()
@@ -69,11 +71,9 @@ class SharedASTFactsTests(unittest.TestCase):
             and node.get_name("name") == "sample.second"
         )
         self.assertFalse(result.bindings_for(second, "Base")[0].state.may_rebind)
-        with self.assertRaises(shikake.ExternalModelingError):
-            shikake.parse_source(
-                "from framework.memory import Memory\nconsume(Memory.new)\n",
-                definitions=definitions,
-            )
+        source = "from framework.memory import Memory\nconsume(Memory.new)\n"
+        inspected = shikake.inspect_source(source, definitions=definitions)
+        self.assertTrue(inspected.complete, inspected.issues)
 
 
 if __name__ == "__main__":

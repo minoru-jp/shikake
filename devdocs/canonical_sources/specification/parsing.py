@@ -19,14 +19,14 @@ class PARSING:
     """単一ソースとローカルパッケージの解析、Strict・Partialの失敗契約。"""
 
     class SPEC_001:
-        """`parse_source(source, *, filename, index, definitions, import_policy, allowed_modules, syntax_validation)` は文字列のPythonソースを構文解析し、対応するModelを返す。与えられたソースを実行しない。"""
+        """`parse_source(source, *, filename, index, definitions, syntax_validation)` は文字列のPythonソースを構文解析し、対応するModelを返す。与えられたソースを実行しない。"""
 
         title @= "単一ソースの解析"
         level @= MUST
         related @= (MODEL.SPEC_001,)
 
     class SPEC_002:
-        """`parse_package(directory, *, index, analyses, definitions, include, extensions, import_policy, allowed_modules, syntax_validation)` と `inspect_package(directory, *, index, analyses, definitions, include, extensions, import_policy, allowed_modules, syntax_validation)` は、実在するディレクトリ以下で指定された拡張子を持つ通常ファイルをファイルパス順に対象とする。`extensions` の既定値は `(".py",)` とし、詳細な照合・検証は `PARSING.SPEC_025` に従う。`include` 省略時は拡張子に一致する全ファイルを対象とし、指定時は `PARSING.SPEC_024` の選別後に残ったファイルだけを対象とする。`__init__` ファイルを必要とせず、特定のディレクトリ名やファイル名を暗黙に除外しない。"""
+        """`parse_package(directory, *, index, analyses, definitions, include, extensions, syntax_validation)` と `inspect_package(directory, *, index, analyses, definitions, include, extensions, syntax_validation)` は、実在するディレクトリ以下で指定された拡張子を持つ通常ファイルをファイルパス順に対象とする。`extensions` の既定値は `(".py",)` とし、詳細な照合・検証は `PARSING.SPEC_025` に従う。`include` 省略時は拡張子に一致する全ファイルを対象とし、指定時は `PARSING.SPEC_024` の選別後に残ったファイルだけを対象とする。`__init__` ファイルを必要とせず、特定のディレクトリ名やファイル名を暗黙に除外しない。"""
 
         title @= "パッケージの入力範囲"
         level @= MUST
@@ -45,7 +45,7 @@ class PARSING:
         level @= MUST
 
     class SPEC_005:
-        """Strictの `parse_source` / `parse_package` はAST解析時と、既定のコンパイル水準の検証時に生じる構文エラーを `SyntaxError`、未対応AST構文を `UnsupportedSyntaxError` として拒否する。外部宣言との不整合は `ExternalModelingError` とする。未対応部分を成功した完全なModelとして黙って省略しない。"""
+        """Strictの `parse_source` / `parse_package` はAST解析時と、既定のコンパイル水準の検証時に生じる構文エラーを `SyntaxError`、未対応AST構文を `UnsupportedSyntaxError` として拒否する。外部定義そのものの不整合は定義の検証時に拒否する。未対応部分を成功した完全なModelとして黙って省略しない。"""
 
         title @= "Strict解析の失敗"
         level @= MUST
@@ -63,7 +63,7 @@ class PARSING:
         level @= MUST
 
     class SPEC_008:
-        """単一ソースの構文エラー、または外部構造の予約名・import配置・明示されたimport許可規則・保護された参照の書き換えなどファイル全体の整合性を損なう違反では、`SourceInspection.model` は `None` とする。既定のコンパイル水準の検証に失敗したソースも構文エラーとして同様に扱う。一方、未登録の構造呼び出し・外部構造の値としての使用・登録呼び出しの引数不整合は、局所エラーとして省略単位とともに診断し、回復できる構成木を返してよい。どちらも `complete=False` であり、Strict解析は従来どおり拒否する。"""
+        """単一ソースの構文エラー、または利用側が明示したImportPolicyへの違反では、`SourceInspection.model` は `None` とする。既定のコンパイル水準の検証に失敗したソースも構文エラーとして同様に扱う。一方、未登録の外部呼び出しや値参照、引数不一致は通常Modelとして保持し、外部使用規則によって拒絶しない。"""
 
         title @= "構文エラーと外部定義エラー"
         level @= MUST
@@ -82,7 +82,7 @@ class PARSING:
         related @= (MODEL.SPEC_008,)
 
     class SPEC_011:
-        """`InspectionIssue.category` は `unsupported_syntax`、`syntax_error`、`external_definition` のいずれかとする。`filename`、`node_type`、`message` と取得可能な `line`・`column` を保持し、行は1始まり、列は0始まりのUTF-8バイトオフセットとする。AST解析時の構文エラーの文字位置をUTF-8バイト位置へ変換し、ASTコンパイラの構文エラーはテキストがない場合もコンパイラ由来のUTF-8バイト位置を利用する。位置が得られない場合は `None` とする。"""
+        """`InspectionIssue.category` は `unsupported_syntax`、`syntax_error`、`external_definition`、`import_policy` のいずれかとする。`filename`、`node_type`、`message` と取得可能な `line`・`column` を保持し、行は1始まり、列は0始まりのUTF-8バイトオフセットとする。AST解析時の構文エラーの文字位置をUTF-8バイト位置へ変換し、ASTコンパイラの構文エラーはテキストがない場合もコンパイラ由来のUTF-8バイト位置を利用する。位置が得られない場合は `None` とする。"""
 
         title @= "診断のカテゴリと位置"
         level @= MUST
@@ -127,7 +127,7 @@ class PARSING:
         related @= (MODEL.SPEC_008,)
 
     class SPEC_018:
-        """`inspect_package` は構文エラーまたはファイル全体の外部構造制約違反のあるモジュールを構成Modelから除外し、診断を残す。局所的な外部構造違反および未対応構文については、文単位の省略規則に従って回復できる範囲を保持する。他の解析可能なモジュールは保持する。エラーを含むファイルの存在だけを理由に、他の正常なファイルの構造を削除してはならない。"""
+        """`inspect_package` は構文エラーまたは利用側が明示したimport制限への違反があるモジュールを構成Modelから除外し、診断を残す。未登録の外部Call、値としての参照、再束縛、引数不一致はそれ自体でモジュールを除外しない。未対応構文は従来どおり文単位で回復可能な範囲の結果を残す。他の解析可能なモジュールは保持する。"""
 
         title @= "不完全パッケージのモジュール保持"
         level @= MUST
@@ -141,9 +141,9 @@ class PARSING:
         related @= (MODEL.SPEC_008,)
 
     class SPEC_020:
-        """`InspectionIssue.code` は機械可読な識別子とし、`message` の文言から推測してはならない。構文エラーは `syntax.invalid`、未対応ASTは `syntax.unsupported` とする。外部構造違反のコードは以下の閉じた集合とする：`external.registered_star_import`、`external.unregistered_import`、`external.import_scope`、`external.import_conflict`、`external.wildcard_shadow`、`external.reserved_name_rebound`、`external.reserved_name_binding`、`external.interface_modified`、`external.interface_value`、`external.unregistered_call`、`external.too_many_positional`、`external.starred_positional`、`external.keyword_arguments`、`external.unknown_keyword`、`external.argument_mismatch`。外部例外を直接構築した場合の未分類コード `external.definition_error` と、診断オブジェクトを利用側で直接構築した場合の未分類コード `diagnostic.unspecified` を許容する。`details` は読み取り専用のキー/値情報であり、コードごとに確定した情報だけを載せる。登録済み外部CallMappingの引数診断では、`details.target` にソースに記述された呼び出し先を入れ、過剰な位置引数では `expected_count`（宣言数）と `actual_count`（明示された位置引数数）、未知のキーワードでは `keyword`、引数不足・重複では問題の `keyword` を返す。`*` 展開で実効引数数は推測せず、コード `external.starred_positional` を用いる。`**` 展開と重複キーワードは `external.keyword_arguments` に残し、既知なら `keyword` を付ける。`external.unregistered_import` は `details.path` に違反したimport記述、`details.policy` に許可モードを保持する。個別の英語メッセージを解析して補完してはならない。"""
+        """`InspectionIssue.code` は機械可読な識別子とする。構文エラーは `syntax.invalid`、未対応ASTは `syntax.unsupported` とする。import文の採否を理由とする専用診断コードは設けない。Call Mappingの不一致は診断ではなく通常のCall Modelに変換する。診断の `details` は読み取り専用で、確定した情報だけを載せる。"""
 
-        title @= "診断コードと構造化付加情報"
+        title @= "診断コードと構造化情報"
         level @= MUST
 
     class SPEC_021:
@@ -153,14 +153,14 @@ class PARSING:
         level @= MUST
 
     class SPEC_022:
-        """外部構造のPartial回復は `external.unregistered_call`、`external.interface_value` と、登録済みCallMappingの引数検証違反（`external.too_many_positional`、`external.starred_positional`、`external.keyword_arguments`、`external.unknown_keyword`、`external.argument_mismatch`）だけを文単位で省略して継続する。同じ文中の複数違反は把握できる範囲で診断できるが、全件列挙の保証はしない。`if`/`elif` は一つの分岐Modelなので、`elif` 条件の違反では全分岐文を省略する。予約名の再束縛、保護された参照の書き換え、star import、外部importの位置や衝突、`import_policy` に対する違反はモジュール全体で拒否し、局所エラーよりも優先する。不完全なModelを完全な解析結果として扱わず、パッケージの関係候補・名前束縛の非公開規則を維持する。省略による情報欠落は省略箇所だけに限らず、保持した後続Modelの解釈（確定代入の判断等）にも影響し得る。保持されたModelの構造が正しくても、欠落した文や束縛が元ソースに存在しないと結論づけてはならない。省略文の書き込み事実は追加保証しない。"""
+        """外部Call Mappingの引数不一致・未登録経路・値参照・再束縛を局所的な解析エラーとみなさず、通常のModelを保持する。そのため専用の外部Call違反の文単位省略・回復処理は行わない。未対応構文によるPartial解析の回復は別の契約に従う。"""
 
-        title @= "外部構造違反の局所回復とファイル全体の拒否"
+        title @= "外部Callに由来する局所エラー回復は不要"
         level @= MUST
         related @= (MODEL.SPEC_001,)
 
     class SPEC_023:
-        """`inspect_source` の `SourceInspection.name_bindings` は、診断がなく完全なModelを返せた場合に限り、パッケージ解析と同じ構文事実収集器から得た `NameBinding` を公開する。束縛の単位はModelに対応する字句スコープであり、単一ソースのモジュール名は `<source>` とする。構文エラー・外部構造違反・未対応構文による不完全な解析では、部分的にModelが得られても `name_bindings=()` とする。不完全な構文から束縛の全体像を断定してはならない。`parse_source` の戻り値と `inspect_package` の契約は維持する。"""
+        """`inspect_source` の `SourceInspection.name_bindings` は、診断がなく完全なModelを返せた場合に限り、パッケージ解析と同じ構文事実収集器から得た `NameBinding` を公開する。束縛の単位はModelに対応する字句スコープであり、単一ソースのモジュール名は `<source>` とする。構文エラー・未対応構文による不完全な解析では、部分的にModelが得られても `name_bindings=()` とする。不完全な構文から束縛の全体像を断定してはならない。`parse_source` の戻り値と `inspect_package` の契約は維持する。"""
 
         title @= "単一ソースの名前束縛事実"
         level @= MUST
@@ -180,13 +180,13 @@ class PARSING:
         related @= (MODEL.SPEC_001,)
 
     class SPEC_026:
-        """4つの解析APIは `syntax_validation: Literal["compile", "ast"] = "compile"` を受け付ける。既定の `"compile"` では `ast.parse(..., type_comments=False)` の後にASTを `compile(tree, filename, "exec", dont_inherit=True)` へ渡し、実行せずCPythonコンパイラの構文・スコープ検査を行う。`"ast"` はこの追加検査を省き、従来のAST解析水準でModel化を試みる。追加検査の省略はshikakeの非対応構文を許可するものではない。コンパイル検査が拒否したソースはStrictでは `SyntaxError` を送出し、Partialの単一ソースは `syntax.invalid`・`model=None`、パッケージでは当該ファイルを省略して他のファイルを継続する。既存の構文エラーと同じ診断カテゴリを用いる。`syntax_validation` が非文字列なら `TypeError`、未知の文字列なら `ValueError` とし、空のパッケージでも検証する。コンパイル検査ではコードオブジェクトを生成するが入力コードを実行・importせず、コンパイル成功は意味上の正しさ・実行時の安全性・確定代入を保証しない。対象Pythonのバージョンの文法・コンパイラ規則に従い、コンパイラ由来の警告を一律に抑制しない。ASTコンパイラ自体の深さ・資源制約を保証なく取り除くものではない。"""
+        """4つの解析APIは `syntax_validation: Literal["compile", "ast"] = "compile"` を受け付ける。既定の `"compile"` では `ast.parse(..., type_comments=False)` の後にASTを `compile(tree, filename, "exec", dont_inherit=True)` へ渡し、実行せずCPythonコンパイラの構文・スコープ検査を行う。`"ast"` はこの追加検査を省き、従来のAST解析水準でModel化を試みる。追加検査の省略はshikakeの非対応構文を許可するものではない。コンパイル検査が拒否したソースはStrictでは `SyntaxError` を送出し、Partialの単一ソースは `syntax.invalid`・`model=None`、パッケージでは当該ファイルを省略して他のファイルを継続する。既存の構文エラーと同じ診断カテゴリを用いる。`syntax_validation` が非文字列なら `TypeError`、未知の文字列なら `ValueError` とし、空のパッケージでも検証する。コンパイル検査ではコードオブジェクトを生成するが入力コードを実行・importせず、コンパイル成功は意味上の正しさ・実行時の安全性・確定代入を保証しない。対象Pythonのバージョンの文法・コンパイラ規則に従い、解析中の警告はPython標準の警告機構を通じて呼び出し元へ渡す。shikakeは警告の捕捉・抑制・InspectionIssueへの変換を行わず、ホストのwarningsフィルタ設定に従う。警告が構文エラーへ変換されれば通常のSyntaxErrorとして扱う。ASTコンパイラ自体の深さ・資源制約を保証なく取り除くものではない。"""
 
         title @= "任意に省略できるコンパイル水準の構文検証"
         level @= MUST
 
     class SPEC_027:
-        """既存ASTノードに新しい意味が加わる場合も、採用された構文は明示的なModel契約へ対応付け、未採用の構文を黙って読み飛ばしてはならない。Python 3.15の `ast.Import` / `ast.ImportFrom` の `is_lazy` が真である場合は、通常のimportと同一Kind・Structureを用い、import文Modelに `lazy` Featureを付与して明示された修飾を保持する。通常のimportには付与せず、aliasのModelにも付与しない。これは実行時の遅延ロードや初期化順序を判断するものではなく、束縛3軸と静的な参照先候補の評価規則を変更しない。古いPythonがlazy構文を構文解析できない場合は、そのPythonのパーサーの制約に従う。Python 3.15の展開付き内包表記（PEP 798）は `EXPRESSIONS.SPEC_031` に従ってModel化し、辞書型も新しいKind・Structureで通常の内包表記と区別する。通常のimportの従来Model化と、3.14以前のASTノードの扱いは維持する。今後追加されるすべてのASTフィールドや構文の自動検出を保証するものではなく、対応するPythonのバージョンごとにModelとの意味的な対応を検証する。"""
+        """既存ASTノードに新しい意味が加わる場合も、採用された構文は明示的なModel契約へ対応付け、未採用の構文を黙って読み飛ばしてはならない。Python 3.15の `ast.Import` / `ast.ImportFrom` の `is_lazy` が真である場合は、通常のimportと同一Kind・Structureを用い、import文Modelに `lazy` Featureを付与して明示された修飾を保持する。通常のimportには付与せず、aliasのModelにも付与しない。これは実行時の遅延ロードや初期化順序を判断するものではなく、束縛4軸と静的な参照先候補の評価規則を変更しない。古いPythonがlazy構文を構文解析できない場合は、そのPythonのパーサーの制約に従う。Python 3.15の展開付き内包表記（PEP 798）は `EXPRESSIONS.SPEC_031` に従ってModel化し、辞書型も新しいKind・Structureで通常の内包表記と区別する。通常のimportの従来Model化と、3.14以前のASTノードの扱いは維持する。今後追加されるすべてのASTフィールドや構文の自動検出を保証するものではなく、対応するPythonのバージョンごとにModelとの意味的な対応を検証する。"""
 
         title @= "未採用の新しいAST表現を黙って通常構文へ写さない"
         level @= MUST
@@ -220,4 +220,10 @@ class PARSING:
         """`collect_comments()` は独立のUnicodeソース文字列を入力とし、結果の保証対象は利用中のPythonのASTで構文解析できるソースに限定する。AST解析を内部で実行することはなく、不正なソースでのtokenizeの結果・例外種別はPythonのバージョン間で保証しない。ファイルから文字列を読む際は `tokenize.open(path)` を利用し、エンコーディング宣言やUTF-8 BOMを処理してから、同じ文字列をModel解析とコメント抽出へ渡せる。tokenizeに伴う字句エラー（`TokenError`、`IndentationError`等）を利用側へ伝播する。Strict/PartialのAST解析APIを内部で呼ばず、既存解析の成否や診断結果を変更しない。コメントの列はtokenizeのUnicode文字オフセットで、AST/SourceSpanのUTF-8バイトオフセットとは異なる。文字列リテラル内部の`#`はコメントではなく、複数行トークンが占める行はコードのある行として扱う。既存の `Model.span` の行番号を `above_line`・`on_right_of_line`・`in_lines` に渡すことはできるが、Modelを受け取る専用検索やASTとの位置対応索引は提供しない。span=None のModelには利用できず、同じ行の複数Modelからは同一の行検索結果になる。ソースとModelの出自の一致およびコメントの所属は検証・推定しない。関数・クラスの本体先頭にあるコメントを調べる際は、定義Modelの開始行ではなく、bodyの最初の文のspan.lineを上方検索に指定できる。ただしその文の開始列より前が同じ行のコードではなく空白のみの場合に限り、本体先頭のコメントを探す利用例として適用する。ヘッダーと本体が同じ行の場合は適用しない。デコレータ付き定義の直前を調べるときは、定義の開始行と各デコレータの開始行の最小値から上方検索する。代入文の行末コメントを調べる際は、代入文のspan.end_lineを行末検索に指定できる。いずれも単なる行位置照会であり、内部のコメントを含む複数行構文にはin_linesを利用する。"""
 
         title @= "コメント字句解析のエラー・座標系と境界"
+        level @= MUST
+
+    class SPEC_033:
+        """4つの解析APIは `import_policy: ImportPolicy | None = None` を受け付ける。指定がなければimport規制を行わない。指定時は、文字列パス `module` は当該モジュールと、その `module.` 以下の子モジュールを階層照合し、`module:Name` は完全一致とする。`from M import N` では、denyに限り `M.N` の候補パスも照合する（名前が実際にサブモジュールであるかは解決しない）。`deny`、`allow`、`default` の順に評価する。`deny`を優先する。`ImportPolicy` の既定は `default="allow"` と `allow_star_import=False` であり、star importは許可を明示したときだけ、対象のモジュールを通常ルールでも検査する。相対importは実体を推論せず、`default`に従う。Strictは`ImportPolicyError`を出し、Partialは`category="import_policy"`の診断としてファイル単位で不完全を示す。import先を実際に読み込んだり、star importから名前を展開したりしない。"""
+
+        title @= "明示的に委譲されたimport検査"
         level @= MUST

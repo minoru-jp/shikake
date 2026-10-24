@@ -1,4 +1,4 @@
-"""外部構造の定義と保護の正本仕様。"""
+"""外部構造の任意登録と静的な呼び出し照合の正本仕様。"""
 
 from shikumi_devdoc.fields.specification import MUST, MUST_NOT, level, related
 from shikumi_devdoc.norms.common import canonical_source, summary
@@ -10,16 +10,16 @@ from devdocs.canonical_sources.specification.parsing import PARSING
 from devdocs.canonical_sources.specification.relations import RELATIONS
 
 
-@summary("Shikumi外部宣言を利用する構造の保護と登録済み呼び出しの契約。")
+@summary("Shikumi外部宣言を利用する構造と登録済み呼び出しの照合契約。")
 @canonical_source(
-    "{{project.name}}: 外部構造の定義と保護",
+    "{{project.name}}: 外部構造の定義と照合",
     filename="external.md",
     order=70,
     merge_policy="all",
     heading="identity",
 )
 class EXTERNAL:
-    """Shikumi外部宣言を利用する構造の保護と登録済み呼び出しの契約。"""
+    """Shikumi外部宣言を利用する構造と登録済み呼び出しの照合契約。"""
 
     class SPEC_001:
         """外部構造定義は信頼済みのPythonモジュールまたは `ExternalDefinitions` として `definitions=` に明示的に渡す。解析対象のPythonソースやimport先を定義情報の取得のために実行してはならない。"""
@@ -29,34 +29,34 @@ class EXTERNAL:
         related @= (PARSING.SPEC_001,)
 
     class SPEC_002:
-        """登録済みのimport可能な外部呼び出し定義に基づき、明示的importで認識できる外部構造のルートと属性連鎖を保護対象とする。`pkg:mod.Cls.make` は宣言モジュールが `pkg`、構造ルートが `pkg.mod.Cls` であり、`pkg.mod` という実在サブモジュールを意味しない。宣言ターゲットのモジュール・属性名はPython ASTと一致するNFKC正規化済み識別子であり、Pythonの予約語でないものに限る。登録モジュールへの明示経路がない `import framework` 等だけから未記述のサブモジュールを補完しない。"""
+        """外部定義のCall Mappingは、明示的なimportが対象ターゲットの完全経路へ静的に対応する場合だけ、専用Modelの候補となる。`pkg:Function` のような直接関数と、`pkg:Class.method` のような属性呼び出しを登録できる。通常の `import pkg` のみから書かれていない `pkg.child` を補完せず、静的な経路の照合のためにimport先を実行しない。"""
 
-        title @= "構造ルートの認識"
+        title @= "外部Call対象の静的認識"
         level @= MUST
         related @= (RELATIONS.SPEC_006,)
 
     class SPEC_003:
-        """保護対象の構造ルートまたはその属性連鎖を直接呼び出す場合は、既存の `ImportedCall` / `CallMapping` に登録されたパスだけを許可する。未登録の任意属性の呼び出しを通常Callへフォールバックしてはならない。"""
+        """Call Mappingに一致する呼び出しは専用KindへModel化する。登録されていない呼び出しは利用側の規則違反として拒絶せず、通常のCall Modelを保持する。"""
 
-        title @= "登録済み呼び出しの許可"
+        title @= "登録済み呼び出しの任意適用"
         level @= MUST
 
     class SPEC_004:
-        """保護対象の構造ルートや属性連鎖を、代入の右辺、引数、return、コンテナ要素、条件式等で値として取り出してはならない。ただし登録済み直接呼び出しの戻り値は通常の値として利用してよい。"""
+        """外部インターフェースの参照は、値・引数・return・注釈・コンテナ要素・条件式などに現れてもshikakeが使用可否を判定しない。可能な限り通常のPython構造として保持し、採否は利用側に委ねる。"""
 
-        title @= "構造自体を値にしない"
+        title @= "外部インターフェースの値参照"
         level @= MUST_NOT
 
     class SPEC_005:
-        """保護対象の構造またはその属性連鎖へ代入・削除等の変更を加えてはならない。Pythonの動的な属性取得を推測し、未登録経路に抜け道を作ってはならない。"""
+        """外部インターフェース名の再束縛・削除・属性変更は、それ自体を拒絶する理由としない。書かれた構文を通常のModelとして保持し、既存の束縛4軸に収集可能な事実は通常どおり公開する。登録されたCall Interfaceの呼び出し対象は値参照として数えず、使用の適否は利用側が判断する。"""
 
-        title @= "構造の変更禁止"
+        title @= "外部名の変更"
         level @= MUST_NOT
 
     class SPEC_006:
-        """`import framework.memory` と `import framework.other` のように同じ根を共有する明示的サブモジュールimportを、それだけで競合する別の束縛とはみなさない。対象ルートの再束縛とは区別する。"""
+        """複数の明示的importが同じ根を束縛するとき、同じ修飾パスを表すなら照合を維持できる。別の修飾パスを導入する同名aliasと競合する場合は、どの実体を指すか推測せず、そのaliasに対する専用Call認識を行わない。Source自体は拒絶しない。"""
 
-        title @= "importパスの併記"
+        title @= "競合するimportの保守的な照合"
         level @= MUST
         related @= (RELATIONS.SPEC_006,)
 
@@ -68,43 +68,57 @@ class EXTERNAL:
         related @= (MODEL.SPEC_004,)
 
     class SPEC_008:
-        """外部構造の未登録操作や不正な使用はStrictで `ExternalModelingError` として拒否し、Partialでは `external_definition` の診断で報告する。名前解決が不足する場合も外部ソースを実行して補完しない。"""
+        """Call Mappingへの一致失敗や引数の不一致はSourceのエラーではなく、通常のCall Modelへフォールバックする。引数は全件照合し終わるまで既存の子Modelを破壊的に消費せず、失敗時にも通常Callを構築できる状態を保つ。外部Callの不一致を理由とする例外やPartialの文単位回復は行わない。import文は `SPEC_013` の構造化規則に従う。"""
 
-        title @= "エラー契約"
+        title @= "不一致時のモデル化"
         level @= MUST
         related @= (PARSING.SPEC_005,)
 
     class SPEC_009:
-        """外部構造の保護のために動的alias追跡、任意の関数の副作用、値伝播、他モジュールの実行状態の追跡を追加してはならない。共通AST事実を利用した保守判定に限る。"""
+        """外部Callの照合に動的alias追跡、任意の呼び出しの副作用、値伝播、他モジュールの実行状態の追跡を追加しない。共通ASTに記録された明示的import経路と書かれた呼び出し形だけを使用する。"""
 
-        title @= "追加解析をしない"
+        title @= "動的解析をしない"
         level @= MUST_NOT
         related @= (BINDING.SPEC_012,)
 
     class SPEC_010:
-        """登録された外部構造へ到達する明示的importは、モジュール直下の無条件な記述だけを許可する。`if`、`try`、ループ等の複合文内部や関数・クラス本体内の対象importは、使用の有無や条件式の内容によらず、import文自体を拒否する。外部構造の保護規則自体は無関係なimportへこの配置・条件の制約を拡張しない。利用側が指定するimport許可範囲については `SPEC_013` に従う。登録済みモジュールからのstar importは、保護対象となる名前を確定できないため拒否する。認識済みの予約名を保護する別の制約は `SPEC_011` に定める。"""
+        """外部インターフェースの明示的importがモジュール直下の無条件な記述なら、登録済みCallの静的照合を試みる。条件付きimport、関数やクラス内部のimport、およびstar importは外部Callの照合を確定できない場合があるため、専用Model化を保証しない。これらのimport記述自体はshikakeによる外部定義の使用制限としては拒絶しない。"""
 
-        title @= "外部構造importの許可位置と不明な公開名"
+        title @= "外部importの認識範囲"
         level @= MUST
         related @= (PARSING.SPEC_005,)
 
     class SPEC_011:
-        """許可された明示的importで認識した外部構造の束縛名（別名や通常のdotted importで束縛される先頭名を含む）は、解析対象ファイル全体で予約名として保護する。予約名に対する再束縛・削除や、同名の定義・別のimport・仮引数・内包表記の変数・型パラメータ等の束縛は、記述順序、条件、字句スコープ、外部構造の使用の有無によらず拒否する。ただし、元の許可済みimportおよび同じ根を共有する許可済みの明示的サブモジュールimportは、競合する再束縛とはみなさない。予約名が存在するときは、無関係なモジュールからのstar importも予約名を導入する可能性を除外できないため、import元や記述位置によらず拒否する。外部モジュールを実行して公開名を調べたり、実行順序から安全性を推測したりしない。予約名が存在しない場合、無関係なimportにこの保護制約を課さない。"""
+        """外部インターフェースとして登録されたimport名はshikakeが予約名として保護しない。代入・削除・同名ローカル変数・型パラメータ等に現れた場合も通常のAST構造を保持する。登録済みの名前と実際の実行時参照先の同一性は保証しない。字句スコープで明示的に隠蔽される名前は専用Call・Type・Genericとして認定せず、通常Modelを保持する。lambdaの既定値と内包表記の最初のiterableは外側のスコープで扱う。クラス直下の内包表記の本体からクラス局所名を参照可能とはみなさない。利用側は必要なら束縛事実とModelを検査する。"""
 
-        title @= "外部構造の予約名とstar importの保護"
+        title @= "外部識別子の束縛は利用側が判断"
         level @= MUST
         related @= (BINDING.SPEC_012, PARSING.SPEC_005)
 
     class SPEC_012:
-        """信頼済みのPythonデータから外部Kind・Structure・CallMappingを構築するビルダーは、Shikumi記述体の読み込み経路と同じKindIndex・Mappingの意味検証を適用しなければならない。ビルダーは記述量を減らす便宜APIであり、保護対象のimport経路、登録済み呼び出しの許可範囲、引数規約、外部Featureの非対応を緩和しない。利用者が渡すKind・Structure・Mappingは解析対象のPythonコードとは独立し、解析対象や外部インターフェースを実行・importしない。"""
+        """信頼済みのPythonデータから外部Kind・Structure・CallMappingを構築するビルダーは、Shikumi記述体の読み込み経路と同じKindIndex・Mappingの意味検証を適用しなければならない。直接関数を含むCallターゲット・引数の定義不整合は登録時に拒否する。解析対象のPythonコードや対象モジュールは実行またはimportしない。"""
 
-        title @= "プログラムによる外部定義と共通検証"
+        title @= "外部定義の共通検証"
         level @= MUST
         related @= (PARSING.SPEC_022,)
 
     class SPEC_013:
-        """`parse_source`・`inspect_source`・`parse_package`・`inspect_package` は利用側の選択により `import_policy` を受け取る。既定の `"unrestricted"` は従来どおりimportの許可集合を制限しない。`"registered_interfaces"` では信頼済み `ExternalDefinitions` のCallMappingから得る構造ルート（`dot:Fn.sin` なら `dot.Fn`）について、`from dot import Fn` のようにinterface自身を明示導入する絶対importだけを許可し、`import dot`、未登録の名前、サブモジュールの推測を許可しない。`"registered_modules"` では外部定義のCallMappingに記述されたモジュール名と `allowed_modules` に指定された任意の絶対モジュール名を合算し、`import module` / `import module as alias` / `from module import name` を許可する。さらに `"registered_interfaces"` が許可する登録済み構造ルートの明示的from importは、宣言モジュール名とimport元が一致しなくても必ず許可する。`pkg:mod.Cls.make` の `from pkg.mod import Cls` は両モードで許可するが、このことだけで `pkg.mod` 全体のimportや `from pkg.mod import helper` を許可しない。`from module import name` の `name` の実在・種類・使用可能性は調べず、追加で許可したモジュールの呼び出しは登録された外部構造でない限り通常CallとしてModel化する。`allowed_modules: tuple[str, ...] = ()` は `"registered_modules"` にだけ非空指定でき、重複、空文字列、相対名、Pythonの絶対モジュール名でない指定、NFKC正規化されていない指定は拒否し、黙って正規化してはならない。`import_policy` の未知の値、`allowed_modules` の不正な型や名前は明示的に拒否し、選別されたファイルにimportがなくても検証する。モジュール名は大文字小文字を区別し、ASTに明記された絶対import元と完全一致させる。`import pkg.child` と `from pkg import child` を実行時に同等とは推測しない。制限モードでは、相対importと `from module import *` を拒否する。ただし `from __future__ import annotations` という単独の宣言は両制限モードで許可し、`__future__` モジュール全体や他のfuture名を特別に許可しない。Pythonのimport解決、標準ライブラリ判定、ファイル探索、属性の実在、ランタイムのライブラリ同一性を確認しない。外部構造の保護・予約名・import配置に関する既存規則はこの許可判定の後も有効とし、動的importを阻止するセキュリティ・サンドボックスとして扱ってはならない。違反した構文は `external.unregistered_import` としてモジュール単位で拒否し、Strictでは `ExternalModelingError`、Partialでは `model=None` のファイル全体の診断とする。Partialのパッケージでは違反モジュールを除いて残りのモジュールを保持し、不完全な関係・束縛事実を断定しない。`details.path` は違反したAST記述のimport名、`details.policy` は指定されたモードとする。同一ファイル内の全違反を収集する保証は設けず、構文上の位置（行・列）の早いimport違反を最初に検出して拒否してよい。"""
+        """4つの解析APIは、import先が外部定義に登録されているかどうかをSourceの採否条件としない。Pythonのパーサ・コンパイラが受け入れ、shikakeがModel化に対応するimport文は通常のModelとして保持する。相対import・star importも外部登録だけを理由として拒否しない。外部Call・Type・Genericとして専用Model化するかどうかは登録済みインターフェースとの静的照合にのみ依存し、登録されないimportも保持する。importの採否は利用側が直接判断するか、明示されたImportPolicyとしてshikakeに委譲できる。対象モジュールの実在・実行時の参照先は確認しない。"""
 
-        title @= "利用側が選択するimport許可範囲"
+        title @= "importは構造として保持し採否は利用側に委ねる"
         level @= MUST
         related @= (PARSING.SPEC_008, PARSING.SPEC_020)
+
+    class SPEC_014:
+        """信頼済み外部定義はCallに加えてType ReferenceとGeneric Applicationを登録できる。Typeは型注釈・関数の引数や戻り値・type aliasの右辺・基底型・登録済みGeneric引数などの型記述位置でのみ専用KindへModel化し、通常の値参照においては専用Kindへ変換しない。Genericは登録済みの `X[...]` に対して指定された固定位置引数の数と形が一致する場合だけ専用KindへModel化する。Call・Type・Genericは同じ名前に独立して登録できる。出力KindとStructureの整合性は登録時に検証し、型幅・型互換性・型推論などの意味判断は行わない。"""
+
+        title @= "型およびGenericインターフェースの任意登録"
+        level @= MUST
+        related @= (BINDING.SPEC_018, MODEL.SPEC_004)
+
+    class SPEC_015:
+        """登録されたGeneric Interfaceに対する `X[T]` は、型注釈以外でもインターフェース構文としてModel化してよい。この場合、登録されたGenericの主識別子およびその型引数の使用は、通常の値参照として観測しない。引数数・形が登録に合わないときは通常のSubscript Modelを残す。値使用の観測は軽量で網羅性を保証せず、新しい追跡器や型推論を導入しない。未登録の `X[T]` は通常の添字式のままとし、型・Genericインターフェースと推測しない。"""
+
+        title @= "Genericの構文使用と通常の値参照"
+        level @= MUST
+        related @= (BINDING.SPEC_018,)

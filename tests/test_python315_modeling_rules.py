@@ -179,7 +179,7 @@ class Python315ModelingRuleTests(unittest.TestCase):
                     statement.is_lazy = 1  # type: ignore[attr-defined]
                 return tree
 
-            with patch("shikake._mica.package.ast.parse", side_effect=lazy_ast):
+            with patch("shikake._mica.parser.ast.parse", side_effect=lazy_ast):
                 lazy = shikake.parse_package(root)
         self.assertEqual(
             [(b.name, b.state) for b in normal.name_bindings],

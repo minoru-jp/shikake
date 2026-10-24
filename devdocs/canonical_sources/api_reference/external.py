@@ -28,16 +28,9 @@ from devdocs.canonical_sources.specification.model import MODEL
 class EXTERNAL_API:
     """信頼済みShikumi記述体とPythonデータビルダーに利用する公開型とフィールド。
 
-    `definitions=` は登録済み構造のModel化に使う。これとは独立して
-    4つの解析APIの `import_policy` では、`"registered_interfaces"` が
-    登録済み構造ルートだけの明示importを、`"registered_modules"` が
-    CallMappingのモジュール名と `allowed_modules` に指定した任意の絶対名の
-    import、および登録済み構造ルートそのものの明示importを許可する。
-    `pkg:mod.Cls.make` の構造ルートは `pkg.mod.Cls` であり、`pkg.mod` を
-    自動的に許可したモジュールとはみなさない。制限モードでも
-    `from __future__ import annotations` の単独宣言は認める。既定の `"unrestricted"` は従来どおり。
-    許可した通常モジュールの関数は、別途外部登録されていなければ通常Callである。
-    名前の実在・実行時の同一性は検証せず、import文を実行しない。
+    `definitions=` は外部Call・Type・Genericの専用Model化に使う。
+    外部登録の有無でimport文を拒絶しない。通常のimportはModelとして保持し、
+    許可・不許可の判断は利用側が行う。解析対象のモジュールは実行・importしない。
     詳細は `EXTERNAL.SPEC_013` に従う。"""
 
     class API_001:
@@ -48,7 +41,7 @@ class EXTERNAL_API:
         related @= (EXTERNAL.SPEC_003,)
         input @= 'path: str 例 "framework.memory:Memory.new"'
         output @= "ImportedCall"
-        detail @= "モジュール名とClass.method以上の属性連鎖が必要。モジュール名・属性名はNFKC正規化済みの識別子に限る。"
+        detail @= "モジュール名と1つ以上の識別子が必要。直接関数と属性呼び出しに対応する。モジュール名・属性名はNFKC正規化済みの識別子に限る。"
 
     class API_002:
         "外部Call引数からModelのnode roleへの対応付け。"
@@ -70,6 +63,8 @@ class EXTERNAL_API:
         related @= (EXTERNAL.SPEC_001,)
         input @= "index: KindIndex"
         input @= "mappings: tuple[CallMapping, ...]"
+        input @= "type_mappings: tuple[TypeMapping, ...]"
+        input @= "generic_mappings: tuple[GenericMapping, ...]"
         output @= "ExternalDefinitions"
         detail @= "解析器へdefinitions=で渡す。"
 
@@ -258,6 +253,8 @@ class EXTERNAL_API:
         input @= "add_structure(structure_id: str, parts: Sequence[Role])"
         input @= "add_mapping(target: str | ImportedCall, kind_id: str, arguments: Sequence[str] | Sequence[Argument])"
         input @= "add_call(target: str | ImportedCall, kind_id: str, arguments: Sequence[str] | Sequence[Argument], *, parent_id: str = 'model.value', structure_id: str | None = None)"
+        input @= "add_type(target: str | ImportedType, kind_id: str, *, parent_id: str = 'model.value')"
+        input @= "add_generic(target: str | ImportedGeneric, kind_id: str, roles: Sequence[str], *, parent_id: str = 'model.value')"
         output @= "build() -> ExternalDefinitions"
         detail @= "add_callはKindとCallMappingを併せて宣言し、structure_id省略時はnode roleだけの専用Structureを生成する。既存Kindにマッピングのみ追加するときはadd_mappingを使う。文字列の引数名はrole名とキーワード名の両方に使用し、異なる場合はArgumentを指定する。argumentsには名前とArgumentを混在させず、単一の文字列も渡せない。build時にShikumi読み込みと共通の検証を適用し、保護import規則を緩和せず、外部Featureの追加もサポートしない。解析対象ソースやimport先は実行しない。"
 
@@ -281,3 +278,76 @@ class EXTERNAL_API:
             出力は `64` です。独自のKind分類・共有Structure・異なる引数keywordが必要なら
             `add_kind`、`add_structure`、`Argument` と `structure_id` を併用します。
             ビルダーは既存Shikumi宣言の代替入口であり、独自の許可規則を追加しません。"""
+
+    class API_016:
+        "明示的importから型注釈で利用される型名インターフェースの対象。"
+
+        name @= "shikake.external.ImportedType"
+        kind @= TYPE
+        related @= (EXTERNAL.SPEC_014,)
+        input @= 'path: str 例 "pyinto.kinds:int32"'
+        output @= "ImportedType"
+        detail @= "Typeの参照は型記述位置でのみ専用Modelとなる。値参照は通常のName/Attribute Model。"
+
+    class API_017:
+        "角括弧で適用される外部Genericインターフェースの対象。"
+
+        name @= "shikake.external.ImportedGeneric"
+        kind @= TYPE
+        related @= (EXTERNAL.SPEC_014,)
+        input @= 'path: str 例 "pyinto.kinds:Array"'
+        output @= "ImportedGeneric"
+        detail @= "登録された固定個数の位置引数でのみ専用Modelとなる。"
+
+    class API_018:
+        "外部Type参照と専用Kindとの対応情報。"
+
+        name @= "shikake.external.TypeMapping"
+        kind @= TYPE
+        related @= (EXTERNAL.SPEC_014,)
+        input @= "target: ImportedType"
+        input @= "kind_id: str"
+        output @= "TypeMapping"
+        detail @= "出力KindのStructureは空のrolesで定義する。"
+
+    class API_019:
+        "外部Generic適用と専用Kindとの対応情報。"
+
+        name @= "shikake.external.GenericMapping"
+        kind @= TYPE
+        related @= (EXTERNAL.SPEC_014,)
+        input @= "target: ImportedGeneric"
+        input @= "kind_id: str"
+        input @= "roles: tuple[str, ...]"
+        output @= "GenericMapping"
+        detail @= "rolesは宣言順・固定個数のnode roles。構文上の型意味は解釈しない。"
+
+    class API_020:
+        "Shikumi外部Type参照ターゲットを宣言する。"
+
+        name @= "shikake.external.match_type"
+        kind @= VALUE
+        related @= (EXTERNAL.SPEC_014,)
+        input @= "ImportedType"
+        output @= "Shikumi field assignment"
+        detail @= "対応するKindをemitで指定する。"
+
+    class API_021:
+        "Shikumi外部Generic適用ターゲットを宣言する。"
+
+        name @= "shikake.external.match_generic"
+        kind @= VALUE
+        related @= (EXTERNAL.SPEC_014,)
+        input @= "ImportedGeneric"
+        output @= "Shikumi field assignment"
+        detail @= "対応するKindをemitで指定する。"
+
+    class API_022:
+        "Shikumi外部Genericの固定位置引数のnode roleを列挙する。"
+
+        name @= "shikake.external.slot"
+        kind @= VALUE
+        related @= (EXTERNAL.SPEC_014,)
+        input @= "role: str"
+        output @= "Shikumi field assignment"
+        detail @= "宣言順にGeneric引数の位置に対応する。"

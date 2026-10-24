@@ -231,7 +231,7 @@ class SpecificationStructureTests(unittest.TestCase):
                 "SPEC_014": ("callee", "arguments"),
             },
             "statements.py": {
-                "SPEC_016": ("model.definition.generator", "Method"),
+                "SPEC_016": ("generator", "Method", "Feature"),
                 "SPEC_017": ("内包表記", "yield"),
                 "SPEC_018": ("subject", "paths"),
                 "SPEC_019": ("optional_node", "None"),

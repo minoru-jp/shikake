@@ -93,7 +93,9 @@ class ReviewCollectionGuards(unittest.TestCase):
             inspected = shikake.inspect_package(folder)
             self.assertTrue(inspected.complete, inspected.issues)
             (base,) = inspected.base_references
-            self.assertEqual(base.binding, shikake.BindingState("stable", False, False))
+            self.assertEqual(
+                base.binding, shikake.BindingState("stable", False, False, False)
+            )
 
     def test_partial_package_never_invents_implicit_builtin_binding(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -158,13 +160,13 @@ class ReviewCollectionGuards(unittest.TestCase):
                 (value,) = values("result = " + text)
                 self.assertEqual(value.kind.id, "model.value.collection." + category)
 
-    def test_unknown_star_import_withholds_model_normalization(self) -> None:
+    def test_unknown_star_import_does_not_affect_model_normalization(self) -> None:
         source = "from unknown import *\nresult = tuple(xs)"
-        self.assertEqual(values(source)[0].kind.id, "model.value.call")
+        self.assertEqual(values(source)[0].kind.id, "model.value.collection.sequence")
         inspected = shikake.inspect_source(source)
         assert inspected.model is not None
         (binding,) = inspected.bindings_for(inspected.model, "tuple")
-        self.assertTrue(binding.state.may_rebind)
+        self.assertFalse(binding.state.may_rebind)
 
 
 if __name__ == "__main__":

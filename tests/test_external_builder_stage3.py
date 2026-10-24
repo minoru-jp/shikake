@@ -207,10 +207,10 @@ class ExternalBuilderStage3Tests(unittest.TestCase):
                 "demo.sin",
                 cast(Sequence[str], ("value", Argument("x", 1, "x"))),
             )
-        with self.assertRaises(ValueError):
-            builder.add_call("demo:sin", "demo.sin", ("value",))
         with self.assertRaisesRegex(ValueError, "no declarations"):
             builder.build()
+        builder.add_call("demo:sin", "demo.sin", ("value",))
+        self.assertEqual(builder.build().mappings[0].target.path, "demo:sin")
 
 
 if __name__ == "__main__":

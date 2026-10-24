@@ -6,6 +6,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
+from shikake.external import ExternalDefinitions
+
 from .ast_facts import SyntaxFacts
 from .base_references import BaseReference, OverrideCandidate
 from .class_hierarchy import _ClassHierarchy
@@ -143,7 +145,8 @@ def _analyze_package_facts(
     selected: frozenset[str],
     syntax: Mapping[str, tuple[SyntaxFacts, Mapping[int, Model]]],
     *,
-    builtin_star_sink: set[tuple[str, str]] | None = None,
+    builtin_value_sink: set[tuple[str, str]] | None = None,
+    external_definitions: ExternalDefinitions | None = None,
 ) -> tuple[
     tuple[OverrideCandidate, ...], tuple[BaseReference, ...], tuple[NameBinding, ...]
 ]:
@@ -153,9 +156,11 @@ def _analyze_package_facts(
     required = frozenset().union(
         *(analyzer.required_definitions for analyzer in scheduled)
     )
-    facts = _collect_facts(modules, syntax, definitions=required)
-    if builtin_star_sink is not None:
-        builtin_star_sink.update(facts.builtin_star_conflicts())
+    facts = _collect_facts(
+        modules, syntax, definitions=required, external_definitions=external_definitions
+    )
+    if builtin_value_sink is not None:
+        builtin_value_sink.update(facts.builtin_value_uses())
     context = _AnalysisContext(facts, _ClassHierarchy(facts), [])
     completed: set[str] = set()
     for analyzer in scheduled:

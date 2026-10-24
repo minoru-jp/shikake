@@ -11,6 +11,8 @@ import ast
 from dataclasses import dataclass, field
 from typing import Literal
 
+from .statement_blocks import statement_branches
+
 
 @dataclass(slots=True, eq=False)
 class SyntaxScope:
@@ -19,6 +21,15 @@ class SyntaxScope:
     parent: SyntaxScope | None
     globals: set[str] = field(default_factory=set)
     nonlocals: set[str] = field(default_factory=set)
+
+
+@dataclass(slots=True, eq=False)
+class _ExpressionFrame:
+    """Only names written in a lambda/comprehension, not inferred bindings."""
+
+    parent: _ExpressionFrame | None
+    names: set[str]
+    is_lambda: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,16 +78,28 @@ class SyntaxFacts:
     # are visible across its body and headers, but ordinary class locals are
     # not inherited by methods. A type alias has only the annotation scope.
     annotation_scopes: dict[ast.AST, SyntaxScope] = field(default_factory=dict)
+    # The same expression walk indexes lambda/comprehension lexical captures.
+    # These are syntactic hints, not an independent name resolver.
+    _expression_frames: dict[ast.AST, _ExpressionFrame | None] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    # Reused by the external-interface, Collection, and relationship passes.
+    _expression_index: (
+        tuple[dict[ast.AST, SyntaxScope], dict[ast.AST, ast.AST], set[ast.AST]] | None
+    ) = field(default=None, init=False, repr=False, compare=False)
 
     def expression_scopes(
         self, tree: ast.Module
-    ) -> tuple[dict[ast.AST, SyntaxScope], dict[ast.AST, ast.AST]]:
-        """Map expression nodes to the lexically visible scope, once.
+    ) -> tuple[dict[ast.AST, SyntaxScope], dict[ast.AST, ast.AST], set[ast.AST]]:
+        """Map scopes, parents and type-position nodes in a single AST pass.
 
         Definition decorators/default values remain in the enclosing scope;
         generic bases, type-alias values and annotations see type parameters.
         This table is shared by all AST-based expression consumers.
         """
+        cached = self._expression_index
+        if cached is not None:
+            return cached
         scopes = {
             item.node: item
             for item in self.scopes
@@ -84,12 +107,56 @@ class SyntaxFacts:
         }
         result: dict[ast.AST, SyntaxScope] = {}
         parents: dict[ast.AST, ast.AST] = {}
-        pending: list[tuple[ast.AST, SyntaxScope, SyntaxScope | None]] = [
-            (tree, self.root, None)
-        ]
+        type_positions: set[ast.AST] = set()
+        # A comprehension's first iterable is evaluated in the enclosing
+        # expression scope, not the comprehension's own lexical frame.
+        outer_frame_for: dict[ast.AST, _ExpressionFrame | None] = {}
+        pending: list[
+            tuple[
+                ast.AST, SyntaxScope, SyntaxScope | None, bool, _ExpressionFrame | None
+            ]
+        ] = [(tree, self.root, None, False, None)]
         while pending:
-            node, scope, header_annotation = pending.pop()
+            node, scope, header_annotation, in_type_position, frame = pending.pop()
+            enclosing_frame = frame
+            if isinstance(node, ast.Lambda):
+                args = node.args
+                names = {
+                    arg.arg
+                    for arg in (
+                        *args.posonlyargs,
+                        *args.args,
+                        *args.kwonlyargs,
+                        *((args.vararg,) if args.vararg else ()),
+                        *((args.kwarg,) if args.kwarg else ()),
+                    )
+                }
+                frame = _ExpressionFrame(frame, names, is_lambda=True)
+            elif isinstance(
+                node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+            ):
+                names = {
+                    name
+                    for clause in node.generators
+                    for name, _ in _target_names(clause.target)
+                }
+                frame = _ExpressionFrame(frame, names)
+                if node.generators:
+                    outer_frame_for[node.generators[0].iter] = enclosing_frame
+            elif isinstance(node, ast.NamedExpr) and isinstance(node.target, ast.Name):
+                # A walrus in a comprehension binds the containing scope.
+                # Collect it only once, not by walking every lambda body for
+                # every use of a name under that lambda.
+                owner = frame
+                while owner is not None and not owner.is_lambda:
+                    owner = owner.parent
+                if owner is not None:
+                    owner.names.add(node.target.id)
+            if isinstance(node, (ast.Name, ast.Attribute, ast.Call)):
+                self._expression_frames[node] = frame
             result[node] = scope
+            if in_type_position:
+                type_positions.add(node)
             body_scope = scopes.get(node)
             own_annotation = self.annotation_scopes.get(node)
             for name, value in ast.iter_fields(node):
@@ -135,8 +202,42 @@ class SyntaxFacts:
                         and header_annotation is not None
                     ):
                         child_scope = header_annotation
-                    pending.append((child, child_scope, next_annotation))
-        return result, parents
+                    child_is_type = in_type_position or (
+                        isinstance(node, (ast.AnnAssign, ast.arg))
+                        and name == "annotation"
+                        or isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and name == "returns"
+                        or type(node).__name__ == "TypeAlias"
+                        and name == "value"
+                        or isinstance(node, ast.ClassDef)
+                        and name == "bases"
+                    )
+                    # Lambda defaults are evaluated at definition time in the
+                    # outer expression scope. Its body uses the lambda frame.
+                    child_frame = (
+                        enclosing_frame
+                        if isinstance(node, ast.Lambda) and name == "args"
+                        else outer_frame_for.get(child, frame)
+                    )
+                    pending.append(
+                        (
+                            child,
+                            child_scope,
+                            next_annotation,
+                            child_is_type,
+                            child_frame,
+                        )
+                    )
+        self._expression_index = (result, parents, type_positions)
+        return self._expression_index
+
+    def expression_frame(self, node: ast.AST) -> _ExpressionFrame | None:
+        """Return the nearest expression frame, building the shared index if needed."""
+        if self._expression_index is None:
+            tree = self.root.node
+            assert isinstance(tree, ast.Module)
+            self.expression_scopes(tree)
+        return self._expression_frames.get(node)
 
     # All bound parameter / pattern / type parameter names are operations,
     # including syntactic constructs without an ast.Name(Store) child.
@@ -387,53 +488,25 @@ def _header_writes(statement: ast.stmt) -> tuple[_HeaderWrite, ...]:
 def _child_blocks(
     statement: ast.stmt,
 ) -> tuple[tuple[list[ast.stmt], tuple[tuple[str, ast.AST], ...]], ...]:
-    if isinstance(statement, ast.If):
-        branches: list[tuple[list[ast.stmt], tuple[tuple[str, ast.AST], ...]]] = []
-        current = statement
-        while True:
-            elif_captures = (
-                tuple(
-                    (name, origin) for name, origin, _, _, _ in _header_writes(current)
-                )
-                if current is not statement
-                else ()
+    """Add lexical captures to the shared statement-block enumeration."""
+    branches: list[tuple[list[ast.stmt], tuple[tuple[str, ast.AST], ...]]] = []
+    for branch in statement_branches(statement):
+        captures: list[tuple[str, ast.AST]] = []
+        if branch.elif_header is not None:
+            captures.extend(
+                (name, origin)
+                for name, origin, _, _, _ in _header_writes(branch.elif_header)
             )
-            branches.append((current.body, elif_captures))
-            if (
-                len(current.orelse) == 1
-                and isinstance(current.orelse[0], ast.If)
-                and current.orelse[0].col_offset == current.col_offset
-            ):
-                current = current.orelse[0]
-                continue
-            if current.orelse:
-                branches.append((current.orelse, ()))
-            return tuple(branches)
-    if isinstance(statement, ast.Match):
-        branches = []
-        for case in statement.cases:
-            captures: list[tuple[str, ast.AST]] = []
-            for node in ast.walk(case.pattern):
+        if branch.pattern is not None:
+            for node in ast.walk(branch.pattern):
                 if isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name:
                     captures.append((node.name, node))
                 elif isinstance(node, ast.MatchMapping) and node.rest:
                     captures.append((node.rest, node))
-            branches.append((case.body, tuple(captures)))
-        return tuple(branches)
-    if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
-        return ((statement.body, ()), (statement.orelse, ()))
-    if isinstance(statement, (ast.With, ast.AsyncWith)):
-        return ((statement.body, ()),)
-    if isinstance(statement, (ast.Try, ast.TryStar)):
-        return (
-            (statement.body, ()),
-            *((h.body, ((h.name, h),) if h.name else ()) for h in statement.handlers),
-            (statement.orelse, ()),
-            (statement.finalbody, ()),
-        )
-    if isinstance(statement, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-        return ((statement.body, ()),)
-    return ()
+        if branch.handler is not None and branch.handler.name:
+            captures.append((branch.handler.name, branch.handler))
+        branches.append((branch.statements, tuple(captures)))
+    return tuple(branches)
 
 
 @dataclass(slots=True)

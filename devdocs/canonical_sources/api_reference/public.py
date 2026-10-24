@@ -63,22 +63,13 @@ class PUBLIC_API:
     `complete` は選別後の入力集合に対する完全性です。除外パターンの照合・警告抑制は
     利用側に委ねます。詳細は `PARSING.SPEC_024` を参照してください。
 
-    **利用側のimport許可規則（`import_policy`・`allowed_modules`）**
+    **import文の構造化と採否の分離**
 
-    4つの解析APIで `import_policy="unrestricted"`（既定）・
-    `"registered_interfaces"`（登録済み構造ルートの明示的from importだけ）・
-    `"registered_modules"`（登録済み外部モジュール名と利用側が `allowed_modules` に指定した
-    モジュール名の合計と、登録済みinterfaceの明示import）の3モードを選べます。
-    `registered_interfaces` の許可対象は `registered_modules` に包含され、
-    例えば `pkg:mod.Cls.make` の `from pkg.mod import Cls` は両方で許可しますが、
-    `from pkg.mod import helper` は `pkg.mod` 自体を許可していない限り通りません。
-    両制限モードで `from __future__ import annotations` の単独宣言を許可します。
-    `allowed_modules` は `tuple[str, ...] = ()`、非空指定は `registered_modules` のみです。
-    モジュール名はNFKC正規化済みの絶対名を完全一致で比較し、非正規化名は拒否します。実行時の解決、実在確認、
-    標準ライブラリの特例扱いは行いません。制限モードで相対・star importを禁止します（パッケージ内の相対importも例外ではなく、絶対importへの書換えと許可名の指定が必要です）。
-    違反はファイル全体の外部構造診断 `external.unregistered_import` となり、全違反の列挙は保証しません。
-    許可した通常のモジュール呼び出しは、登録されていない限り通常Callです。
-    この機能はPython実行時の安全性を保証するサンドボックスではありません。
+    4つの解析APIは `import_policy: ImportPolicy | None = None` を受け取ります。
+    指定がなければimportを検査しません。指定すると、利用側のallow/deny/defaultと
+    star importの許否をAST上で検査します。denyは優先し、モジュール指定は子モジュールへ
+    階層照合、`module:Name` は完全一致とします。`from M import N` はdeny側で
+    `M.N` も照合します。解析対象のimport先を実行・解決しません。
     詳しくは `EXTERNAL.SPEC_013` を参照してください。
 
     **Python 3.14のt-string**
@@ -109,13 +100,12 @@ class PUBLIC_API:
         input @= 'filename: str = "<source>"'
         input @= "index: KindIndex | None = None"
         input @= "definitions: ModuleType | ExternalDefinitions | None = None"
-        input @= 'import_policy: Literal["unrestricted", "registered_interfaces", "registered_modules"] = "unrestricted"'
-        input @= "allowed_modules: tuple[str, ...] = ()"
         input @= 'syntax_validation: Literal["compile", "ast"] = "compile"'
-        detail @= "import_policyは既定ではunrestricted。registered_interfacesは登録済みinterfaceの明示的importだけ、registered_modulesは登録済み外部モジュールとallowed_modulesで指定した任意の絶対名を許可する。追加の通常importを登録済み外部構造としてModel化しない。制限モードで相対・star importは拒否する（futureのannotations単独宣言のみ例外）。登録済みinterfaceの明示importはregistered_modulesでも通り、allowed_modulesの非NFKC名は拒否する。禁止されたimportはファイル全体のexternal.unregistered_importとなり全件収集は保証しない。実行時の同一性・存在・安全性は保証しない。"
+        input @= "import_policy: ImportPolicy | None = None"
+        detail @= "ImportPolicyを指定しない場合はimportの許可判定を行わない。指定時のみ利用側の規則に従ってAST上のimportを検査する。登録のないimportも通常のModelとして扱え、利用側が採否を決める。"
         output @= "Model"
-        detail @= "未対応構文・外部宣言の違反は例外として返す。"
-        detail @= "syntax_validationは既定でcompile水準の検証を実行し、CPythonでコンパイルできないASTをSyntaxError（Partialではsyntax.invalid）として扱う。ast指定では追加のコンパイル検証だけを省き、未対応構文は引き続き拒否する。解析対象コードは実行しない。"
+        detail @= "未対応構文は例外として返す。"
+        detail @= "syntax_validationは既定でcompile水準の検証を実行し、CPythonでコンパイルできないASTをSyntaxError（Partialではsyntax.invalid）として扱う。ast指定では追加のコンパイル検証だけを省き、未対応構文は引き続き拒否する。解析対象コードは実行しない。警告はPython標準のwarnings機構を通じてホストへ渡し、shikakeが捕捉・診断へ変換しない。"
 
     class API_002:
         "指定ディレクトリ以下で拡張子とincludeで選別した通常のPython構文ファイルをStrictにモデル化する。"
@@ -139,10 +129,9 @@ class PUBLIC_API:
         input @= "definitions: ModuleType | ExternalDefinitions | None = None"
         input @= "include: Callable[[Path, bool], bool] | None = None"
         input @= 'extensions: tuple[str, ...] = (".py",)'
-        input @= 'import_policy: Literal["unrestricted", "registered_interfaces", "registered_modules"] = "unrestricted"'
-        input @= "allowed_modules: tuple[str, ...] = ()"
         input @= 'syntax_validation: Literal["compile", "ast"] = "compile"'
-        detail @= "import_policyは既定ではunrestricted。registered_interfacesは登録済みinterfaceの明示的importだけ、registered_modulesは登録済み外部モジュールとallowed_modulesで指定した任意の絶対名を許可する。追加の通常importを登録済み外部構造としてModel化しない。制限モードで相対・star importは拒否する（futureのannotations単独宣言のみ例外）。登録済みinterfaceの明示importはregistered_modulesでも通り、allowed_modulesの非NFKC名は拒否する。禁止されたimportはファイル全体のexternal.unregistered_importとなり全件収集は保証しない。実行時の同一性・存在・安全性は保証しない。"
+        input @= "import_policy: ImportPolicy | None = None"
+        detail @= "ImportPolicyを指定しない場合はimportの許可判定を行わない。指定時のみ利用側の規則に従ってAST上のimportを検査する。登録のないimportも通常のModelとして扱え、利用側が採否を決める。"
         output @= "PackageModel"
         detail @= "analysesはNoneまたは解析名Iterable。文字列単体（空文字列を含む）はTypeError、未知の解析名はValueError。extensionsの既定値は('.py',)で、指定拡張子だけを対象とする。includeでは下位ディレクトリと対象ファイルを利用側が選別し、省略時は全件許可。ルートは選別対象外で、選別後のモジュール名衝突・Strict解析の失敗は例外となる。"
         detail @= "syntax_validationは既定でcompile水準の検証を実行し、CPythonでコンパイルできないASTをSyntaxError（Partialではsyntax.invalid）として扱う。ast指定では追加のコンパイル検証だけを省き、未対応構文は引き続き拒否する。解析対象コードは実行しない。"
@@ -165,12 +154,11 @@ class PUBLIC_API:
         input @= 'filename: str = "<source>"'
         input @= "index: KindIndex | None = None"
         input @= "definitions: ModuleType | ExternalDefinitions | None = None"
-        input @= 'import_policy: Literal["unrestricted", "registered_interfaces", "registered_modules"] = "unrestricted"'
-        input @= "allowed_modules: tuple[str, ...] = ()"
         input @= 'syntax_validation: Literal["compile", "ast"] = "compile"'
-        detail @= "import_policyは既定ではunrestricted。registered_interfacesは登録済みinterfaceの明示的importだけ、registered_modulesは登録済み外部モジュールとallowed_modulesで指定した任意の絶対名を許可する。追加の通常importを登録済み外部構造としてModel化しない。制限モードで相対・star importは拒否する（futureのannotations単独宣言のみ例外）。登録済みinterfaceの明示importはregistered_modulesでも通り、allowed_modulesの非NFKC名は拒否する。禁止されたimportはファイル全体のexternal.unregistered_importとなり全件収集は保証しない。実行時の同一性・存在・安全性は保証しない。"
+        input @= "import_policy: ImportPolicy | None = None"
+        detail @= "ImportPolicyを指定しない場合はimportの許可判定を行わない。指定時のみ利用側の規則に従ってAST上のimportを検査する。登録のないimportも通常のModelとして扱え、利用側が採否を決める。"
         output @= "SourceInspection"
-        detail @= "未対応構文と局所的な外部構造違反は、違反を含む文を省略して診断し、対応できる兄弟文を保持する。予約名の再束縛などファイル全体の外部構造違反や構文エラーではmodel=Noneとなる。不完全なModelは検査済みの完全な入力として扱わない。省略された文によって後続Modelの解釈に必要な構文・束縛情報が失われる可能性があり、保持したModelから代入の不在等を推定しない。"
+        detail @= "未対応構文は、該当する文を省略して診断し、対応できる兄弟文を保持する。構文エラーではmodel=Noneとなる。不完全なModelは検査済みの完全な入力として扱わない。省略された文によって後続Modelの解釈に必要な構文・束縛情報が失われる可能性があり、保持したModelから代入の不在等を推定しない。"
         detail @= "syntax_validationは既定でcompile水準の検証を実行し、CPythonでコンパイルできないASTをSyntaxError（Partialではsyntax.invalid）として扱う。ast指定では追加のコンパイル検証だけを省き、未対応構文は引き続き拒否する。解析対象コードは実行しない。"
 
     class API_004:
@@ -197,10 +185,9 @@ class PUBLIC_API:
         input @= "definitions: ModuleType | ExternalDefinitions | None = None"
         input @= "include: Callable[[Path, bool], bool] | None = None"
         input @= 'extensions: tuple[str, ...] = (".py",)'
-        input @= 'import_policy: Literal["unrestricted", "registered_interfaces", "registered_modules"] = "unrestricted"'
-        input @= "allowed_modules: tuple[str, ...] = ()"
         input @= 'syntax_validation: Literal["compile", "ast"] = "compile"'
-        detail @= "import_policyは既定ではunrestricted。registered_interfacesは登録済みinterfaceの明示的importだけ、registered_modulesは登録済み外部モジュールとallowed_modulesで指定した任意の絶対名を許可する。追加の通常importを登録済み外部構造としてModel化しない。制限モードで相対・star importは拒否する（futureのannotations単独宣言のみ例外）。登録済みinterfaceの明示importはregistered_modulesでも通り、allowed_modulesの非NFKC名は拒否する。禁止されたimportはファイル全体のexternal.unregistered_importとなり全件収集は保証しない。実行時の同一性・存在・安全性は保証しない。"
+        input @= "import_policy: ImportPolicy | None = None"
+        detail @= "ImportPolicyを指定しない場合はimportの許可判定を行わない。指定時のみ利用側の規則に従ってAST上のimportを検査する。登録のないimportも通常のModelとして扱え、利用側が採否を決める。"
         output @= "PackageInspection"
         detail @= "analysesはNoneまたは解析名Iterable。文字列単体（空文字列を含む）はTypeError、未知の解析名はValueError。extensionsで指定した拡張子の候補だけをincludeで選別してPartial解析し、除外したファイルを診断に含めない。completeは選別後の入力に対する完全性であり、不完全なパッケージで関係解析結果を断定しない。"
         detail @= "syntax_validationは既定でcompile水準の検証を実行し、CPythonでコンパイルできないASTをSyntaxError（Partialではsyntax.invalid）として扱う。ast指定では追加のコンパイル検証だけを省き、未対応構文は引き続き拒否する。解析対象コードは実行しない。"
@@ -297,7 +284,7 @@ class PUBLIC_API:
         detail @= "構成木と関係候補は別の情報。reprは構成Model・解析の概要と関係タプルの件数だけを示す長さ制限付き診断表示であり、各関係を展開しない。完全な内容は属性・問い合わせAPIから取得し、reprからの復元は保証しない。"
 
     class API_013:
-        "クラスに記述された一つの基底式と、静的候補・束縛3軸を保持する。"
+        "クラスに記述された一つの基底式と、静的候補・束縛4軸を保持する。"
 
         name @= "shikake.BaseReference"
         kind @= TYPE
@@ -309,7 +296,7 @@ class PUBLIC_API:
         input @= "attribute_modified: bool = False"
         output @= "BaseReference"
         detail @= "候補の発見は実行時の継承関係を確定しない。"
-        detail @= '根の識別子が標準組み込み名で、内側の可視スコープに同名の束縛がない場合、bindingはモジュールでの組み込み名の3軸となる。例えば同名の書き込みがない `class AppError(Exception)` では `BindingState("builtin", False, False)` となる。'
+        detail @= '根の識別子が標準組み込み名で、内側の可視スコープに同名の束縛がない場合、bindingはモジュールでの組み込み名の4軸となる。例えば同名の書き込みがない `class AppError(Exception)` では `BindingState("builtin", False, False, False)` となる。値参照の4軸目は軽量な観測事実でありFalseが不在を証明するわけではない。'
 
     class API_014:
         "同名定義の可能なオーバーライド関係と根拠を保持する。"
@@ -328,7 +315,7 @@ class PUBLIC_API:
         detail @= "直接基底と間接祖先の同名定義の2区分を示す。実行時MROは計算しない。"
 
     class API_015:
-        "識別子の最初の構文上の導入・再束縛し得る追加/反復書き込み・削除を独立した3軸として示す。"
+        "識別子の導入・再束縛・削除と、値参照の軽量な観測を4軸として示す。"
 
         name @= "shikake.BindingState"
         kind @= TYPE
@@ -338,14 +325,15 @@ class PUBLIC_API:
             BINDING.SPEC_003,
             BINDING.SPEC_004,
         )
-        input @= 'introduction: Literal["stable", "unstable", "builtin"]'
+        input @= 'introduction: Literal["stable", "unstable", "builtin", "external"]'
         input @= "may_rebind: bool"
         input @= "may_delete: bool"
+        input @= "may_value_use: bool"
         output @= "BindingState"
-        detail @= "組み込み名はモジュールの暗黙の初期導入として `(builtin, False, False)` から始まり、当該名へのモジュール書き込みがあれば `may_rebind=True`。通常名の `x = 1` の単独代入は `(stable, False, False)`、`x = 1; x = 2` は `(stable, True, False)`、単独の `n += 1` は `(unstable, True, False)`。条件付きの単独代入は導入のみ `unstable` になり得る。ループ内の書き込みは反復し得る。操作が実際に実行されるか・読み取り時点の確定代入は保証せず、必要なら利用側の言語規則・変換条件に基づいて別途検査する。"
+        detail @= "`builtin`・`external` は安定導入の特化。型注釈・クラス基底式・登録済みCall Interfaceへの呼び出しは通常の値参照として数えない。`may_value_use=True` はModel化時に観測できた使用のみを示し、Falseでも値使用の不在を保証しない。値参照や実行状態の厳密な追跡は行わない。"
 
     class API_016:
-        "指定モジュールと字句スコープに属する名前の3軸を記録する。"
+        "指定モジュールと字句スコープに属する名前の4軸を記録する。"
 
         name @= "shikake.NameBinding"
         kind @= TYPE
@@ -373,7 +361,7 @@ class PUBLIC_API:
         input @= "issues: tuple[InspectionIssue, ...]"
         input @= "name_bindings: tuple[NameBinding, ...] = ()"
         output @= "SourceInspection"
-        detail @= "completeはmodelの有無と診断の両方に従う。局所外部構造違反ではmodelを部分的に返せるが、構文エラー・ファイル全体の外部違反ではNoneとなる。完全な場合にのみ字句スコープ別のname_bindingsを返し、不完全なら空。reprはmodelの概要とname_bindingsの件数を表示し、束縛要素を展開しない。issuesは診断内容を全件表示し、reprによるデータの復元は保証しない。"
+        detail @= "completeはmodelの有無と診断の両方に従う。未対応構文ではmodelを部分的に返せるが、構文エラー・import制限への違反ではNoneとなる。完全な場合にのみ字句スコープ別のname_bindingsを返し、不完全なら空。reprはmodelの概要とname_bindingsの件数を表示し、束縛要素を展開しない。issuesは診断内容を全件表示し、reprによるデータの復元は保証しない。"
 
     class API_018:
         "パッケージ解析のPartial結果。"
@@ -409,7 +397,7 @@ class PUBLIC_API:
         input @= "details: Mapping[str, str | int] = {} (read-only)"
         output @= "InspectionIssue"
         related @= (PARSING.SPEC_011, PARSING.SPEC_020)
-        detail @= "codeは機械可読な安定識別子、messageは人間向けの説明。detailsは読み取り専用。主なコードはsyntax.invalid、syntax.unsupported、external.unregistered_call等。全コードはPARSING.SPEC_020を参照。局所外部違反でもskipped_node_typeとskipped_spanで実際に省略した文を示す。省略は保持された後続Modelの解釈にも影響し得る。外部構造の引数診断ではtargetは記述上の呼び出し先、too_many_positionalはexpected_countとactual_count、starred_positionalでは推測した引数数を返さず、unknown_keywordとargument_mismatchはkeywordを含める。"
+        detail @= "codeは機械可読な安定識別子、messageは人間向けの説明。detailsは読み取り専用。主なコードはsyntax.invalid、syntax.unsupported等。全コードはPARSING.SPEC_020を参照。外部Call Mappingの引数不一致は通常Callとして保持し、局所エラーにはしない。未対応構文の省略は保持された後続Modelの解釈にも影響し得る。"
 
     class API_020:
         "Strict解析で扱えないAST構文を示す例外。"
@@ -421,20 +409,6 @@ class PUBLIC_API:
         input @= "detail: str | None = None"
         output @= "UnsupportedSyntaxError"
         detail @= "未対応構文の記録はPartialではInspectionIssueに変換される。"
-
-    class API_021:
-        "Strict解析で外部構造の使用規則に違反したことを示す例外。"
-
-        name @= "shikake.ExternalModelingError"
-        kind @= TYPE
-        related @= (EXTERNAL.SPEC_008,)
-        input @= "message: str"
-        input @= "node: ast.AST"
-        input @= "*"
-        input @= 'code: str = "external.definition_error"'
-        input @= "details: Mapping[str, str | int] | None = None"
-        output @= "ExternalModelingError"
-        detail @= "Partialではexternal_definition診断となり、コードと判明している詳細を引き継ぐ。"
 
     class API_022:
         "宣言順のrole/値の一覧。"
@@ -646,7 +620,7 @@ class PUBLIC_API:
         input @= "id: str"
         input @= "allowed_kind_ids: tuple[str, ...]"
         output @= "Feature"
-        detail @= "KindIndex.all_features() から得られる不変の定義。標準Featureは `async` と、Python 3.15の明示的lazy importを表す `lazy`。`lazy` はimport文の `model.import.direct` / `model.import.from` にだけ付与し、aliasには付与しない。実行時の遅延を判定するものではない。"
+        detail @= "KindIndex.all_features() から得られる不変の定義。標準Featureは関数・メソッド用の `async`・`generator` と、Python 3.15の明示的lazy importを表す `lazy`。`lazy` はimport文の `model.import.direct` / `model.import.from` にだけ付与し、aliasには付与しない。実行時の遅延を判定するものではない。"
 
     class API_046:
         "Partialパッケージの構成木。"
@@ -922,3 +896,19 @@ if function.span is not None:
         input @= "scope: Model, name: str"
         output @= "tuple[NameBinding, ...]"
         detail @= "完全なSourceInspectionのみ。scopeには同じ解析結果のModelを渡す。記述された名前の束縛はidentityで照会する。同じ定義Modelに注釈スコープと本体スコープが付く場合はscope_kindで区別する。ソースのモジュールModelとPython組み込み名であれば暗黙導入を合成して返す。問い合わせ結果がname_bindingsの列挙に含まれるとは限らない。入れ子スコープを越えた参照先の確定や実行時の名前解決は行わない。"
+
+    class API_065:
+        "利用側から指定するimport許可・禁止規則。"
+
+        name @= "shikake.ImportPolicy"
+        kind @= TYPE
+        related @= (PARSING.SPEC_033,)
+        detail @= "default=allow|deny、allow/denyのmodule階層パスまたは完全一致のmodule:Name、allow_star_import=Falseを保持。from-importではdeny側でmodule.nameも照合する。denyを優先し、指定のない場合はimportを検査しない。"
+
+    class API_066:
+        "利用側が指定したimport規則にStrict解析が違反した際の例外。"
+
+        name @= "shikake.ImportPolicyError"
+        kind @= TYPE
+        related @= (PARSING.SPEC_033,)
+        detail @= "AST上の行・列と違反内容を保持する。Python構文や実行時モジュールの安全性検査ではない。"

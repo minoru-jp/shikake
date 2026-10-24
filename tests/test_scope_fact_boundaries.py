@@ -81,7 +81,9 @@ class SyntaxBoundaryTests(unittest.TestCase):
         )
         derived = self.ref(package, "Derived")
         self.assertEqual(derived.targets, ())
-        self.assertEqual(derived.binding, shikake.BindingState("stable", False, False))
+        self.assertEqual(
+            derived.binding, shikake.BindingState("stable", False, False, False)
+        )
         self.assertEqual(package.override_candidates, ())
 
     @unittest.skipUnless(sys.version_info >= (3, 12), "requires Python 3.12+")
@@ -89,7 +91,9 @@ class SyntaxBoundaryTests(unittest.TestCase):
         package = self.parse({"case.py": "class T: pass\nclass Derived[T](T): pass\n"})
         derived = self.ref(package, "Derived")
         self.assertEqual(derived.targets, ())
-        self.assertEqual(derived.binding, shikake.BindingState("stable", False, False))
+        self.assertEqual(
+            derived.binding, shikake.BindingState("stable", False, False, False)
+        )
 
     @unittest.skipUnless(sys.version_info >= (3, 12), "requires Python 3.12+")
     def test_class_type_parameter_is_stable_within_class_body(self) -> None:
@@ -98,7 +102,9 @@ class SyntaxBoundaryTests(unittest.TestCase):
         )
         derived = self.ref(package, "Derived")
         self.assertEqual(derived.targets, ())
-        self.assertEqual(derived.binding, shikake.BindingState("stable", False, False))
+        self.assertEqual(
+            derived.binding, shikake.BindingState("stable", False, False, False)
+        )
         owner = next(
             node
             for node in package.walk()
@@ -106,7 +112,9 @@ class SyntaxBoundaryTests(unittest.TestCase):
             and node.get_name("name") == "Owner"
         )
         (parameter,) = package.bindings_for(owner, "T")
-        self.assertEqual(parameter.state, shikake.BindingState("stable", False, False))
+        self.assertEqual(
+            parameter.state, shikake.BindingState("stable", False, False, False)
+        )
 
     @unittest.skipUnless(sys.version_info >= (3, 12), "requires Python 3.12+")
     def test_function_type_parameter_shadows_class_in_method(self) -> None:
@@ -122,7 +130,9 @@ class SyntaxBoundaryTests(unittest.TestCase):
         )
         derived = self.ref(package, "Derived")
         self.assertEqual(derived.targets, ())
-        self.assertEqual(derived.binding, shikake.BindingState("stable", False, False))
+        self.assertEqual(
+            derived.binding, shikake.BindingState("stable", False, False, False)
+        )
 
     def test_star_import_does_not_assume_member_of_explicit_all(self) -> None:
         package = self.parse(
@@ -186,7 +196,9 @@ class SyntaxBoundaryTests(unittest.TestCase):
         (target,) = reference.targets
         self.assertIsNot(target, reference.subject)
         self.assertEqual(len(package.override_candidates), 1)
-        self.assertEqual(reference.binding, shikake.BindingState("stable", True, False))
+        self.assertEqual(
+            reference.binding, shikake.BindingState("stable", True, False, False)
+        )
 
     def test_only_self_declaration_does_not_create_self_candidate(self) -> None:
         package = self.parse({"case.py": "class Base(Base):\n    def f(self): pass\n"})
@@ -218,7 +230,9 @@ class SyntaxBoundaryTests(unittest.TestCase):
             }
         )
         derived = self.ref(package, "Derived")
-        self.assertEqual(derived.binding, shikake.BindingState("stable", True, False))
+        self.assertEqual(
+            derived.binding, shikake.BindingState("stable", True, False, False)
+        )
 
 
 if __name__ == "__main__":

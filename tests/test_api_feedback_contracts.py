@@ -16,7 +16,7 @@ from shikake._mica.base_references import OverrideCandidate
 class ApiFeedbackContractTests(unittest.TestCase):
     def test_feature_is_exported_and_matches_index_results(self) -> None:
         self.assertIn("Feature", shikake.__all__)
-        feature = shikake.kind_index().all_features()[0]
+        feature = shikake.definition_index().all_features()[0]
         self.assertIsInstance(feature, shikake.Feature)
         self.assertEqual(shikake.Feature.__module__, "shikake._mica.kinds.index")
 

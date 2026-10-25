@@ -15,7 +15,7 @@ from shikake._mica.parser import _Builder
 
 class Python315ModelingRuleTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.builder = _Builder(shikake.kind_index())
+        self.builder = _Builder(shikake.definition_index())
 
     def test_dict_unpacking_uses_distinct_kind_and_roles(self) -> None:
         base = ast.parse("result = {key: value for key in items}")
@@ -37,7 +37,9 @@ class Python315ModelingRuleTests(unittest.TestCase):
         self.assertEqual(model.get_node("mapping").get_name("name"), "part")
         self.assertEqual(len(model.get_nodes("clauses")), 1)
         self.assertTrue(
-            shikake.kind_index().is_a(model.kind.id, "model.value.comprehension.dict")
+            shikake.definition_index().classified_under(
+                model.kind.id, "model.value.comprehension.dict"
+            )
         )
         normal = self.builder.expression(
             ast.parse("{x: y for x in items}", mode="eval").body
@@ -95,7 +97,7 @@ class Python315ModelingRuleTests(unittest.TestCase):
         )
 
     def test_lazy_feature_is_restricted_to_import_statements(self) -> None:
-        index = shikake.kind_index()
+        index = shikake.definition_index()
         self.assertEqual(
             index.all_features()[-1].allowed_kind_ids,
             ("model.import.direct", "model.import.from"),

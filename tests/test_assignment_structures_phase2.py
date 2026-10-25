@@ -72,7 +72,9 @@ class AssignmentStructureTests(unittest.TestCase):
         self.assertEqual(one(starred, "value").get("name"), "remaining")
         self.assertEqual([p.role for p in starred.parts()], ["value"])
         self.assertTrue(
-            shikake.kind_index().is_a(starred.kind.id, "model.structural_part")
+            shikake.definition_index().classified_under(
+                starred.kind.id, "model.structural_part"
+            )
         )
         self.assertIsNotNone(starred.span)
 
@@ -96,9 +98,13 @@ class AssignmentStructureTests(unittest.TestCase):
         self.assertEqual(binding.kind.id, "model.value.binding")
         self.assertEqual(one(binding, "target").get("name"), "count")
         self.assertEqual(one(binding, "value").kind.id, "model.value.call")
-        self.assertTrue(shikake.kind_index().is_a(binding.kind.id, "model.value"))
+        self.assertTrue(
+            shikake.definition_index().classified_under(binding.kind.id, "model.value")
+        )
         self.assertFalse(
-            shikake.kind_index().is_a(binding.kind.id, "model.statement.assignment")
+            shikake.definition_index().classified_under(
+                binding.kind.id, "model.statement.assignment"
+            )
         )
         self.assertEqual(one(addition, "right").get("name"), "count")
 
@@ -212,7 +218,7 @@ class AssignmentStructureTests(unittest.TestCase):
                 kinds
             )
         )
-        self.assertEqual(len(shikake.kind_index().all_kinds()), 142)
+        self.assertEqual(len(shikake.definition_index().all_kinds()), 142)
 
 
 if __name__ == "__main__":

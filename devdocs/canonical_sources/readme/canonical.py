@@ -17,7 +17,7 @@ class README:
 
     - **構成要素**：**Kind**（分類）、**Structure**（役割と形式）、**Feature**（独立した構文上の特徴）。
     - **基盤**：Python標準の `ast`・`tokenize` と、外部ライブラリ **Shikumi**。
-    - **拡張**：利用側がCall・Type・Genericなどの外部インターフェースを登録できます。"""
+    - **拡張**：利用側がCall・Type・Genericなどの外部インターフェースとFeatureを登録できます。"""
 
     class INSTALL:
         """Python 3.11以降に対応します。
@@ -177,6 +177,8 @@ total BindingState(introduction='stable', may_rebind=True, may_delete=False, may
         - **意味を決めない**：Pythonの実行時の振る舞い、Modelの受け入れ可否、変換先での解釈。
         - **利用側が決める**：例えば、再束縛が観測された構造を拒否する、登録済みインターフェースのTarget側での意味を定める。
 
+        必要な場合のみ、`ModelRef(model, source_path)` でModel個体と `Path` に変換されるソースパスを束ね、辞書キーや外部ツールとのソース位置照合の手掛かりにできます。`ModelRef` の比較はModelの `is` とPathの `==` の双方に基づき、Model本体の構造的等価性を変更しません。
+
         **境界**：Pythonの構文規則や一部のスコープ規則は利用しますが、実行時意味論の完全な再現は目指しません。また、観測されていない事柄が存在しないとは限りません。強い保証が必要な利用側は、別途検証を行ってください。"""
 
         title @= "設計：構造を共有し、解釈は利用側へ"
@@ -306,8 +308,9 @@ print([node.kind.id for node in root.walk()].count("demo.operation.clamp"))
     # fmt: on
     class FURTHER:
         """- **Modelの探索**：`walk()`、Kind、Structure、Feature、ソース位置を利用できます。
+        - **定義への照会**：`definition_index()` または `definitions.index` の `classified_under`・`defines_role`・`allows_feature` で分類、role定義、Featureの適用可能性を個別に照会できます。Modelの内容とは別の問い合わせです。
         - **静的な関係候補**：基底クラスの参照先や同名メソッドのオーバーライド候補を取得できます。
-        - **外部定義**：Call・Type・GenericインターフェースはPython APIまたは信頼済みのShikumi記述で登録できます。
+        - **外部定義**：Call・Type・GenericインターフェースとFeatureはPython APIまたは信頼済みのShikumi記述で登録でき、Featureは外部宣言されたものだけ対応付けで明示的に付与でき、組み込みFeatureを付与することはできません。外部定義の合成には `ExternalDefinitionsBuilder(base=previous_definitions)` を使い、既存マッピングを維持します。外部IDには各部分が `str.isidentifier()` を満たす2個以上のドット区切り名を用い、Python予約語は許容します。先頭のmodel名前空間は予約されています。
         - **解析方法**：完全な解析には `parse_source()` / `parse_package()`、診断を伴う解析には `inspect_source()` / `inspect_package()` を使います。
         - **import検査**：必要なら利用側が `ImportPolicy` を指定して許可・禁止規則を委譲できます。star import自体はModel化しますが、暗黙の名前導入や束縛への影響は推論しません。
 

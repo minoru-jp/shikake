@@ -18,7 +18,7 @@ def expression(text: str) -> Model:
 
 class GeneralizedCollectionTests(unittest.TestCase):
     def test_kind_catalog_has_three_concrete_collection_kinds(self) -> None:
-        index = shikake.kind_index()
+        index = shikake.definition_index()
         descendants = {
             item.id
             for item in index.all_kinds()

@@ -27,7 +27,7 @@ LEGACY_TOPIC_TO_RULE = {
     "extensions.py": "MODEL.SPEC_012",
     "function_class_modeling.py": "STATEMENTS.SPEC_009",
     "generator_modeling.py": "STATEMENTS.SPEC_016",
-    "kind_index.py": "MODEL.SPEC_016",
+    "definition_index.py": "MODEL.SPEC_016",
     "kind_structure_architecture.py": "MODEL.SPEC_004",
     "model.py": "MODEL.SPEC_001",
     "model_structure.py": "MODEL.SPEC_007",

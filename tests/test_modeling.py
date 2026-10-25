@@ -12,15 +12,15 @@ from typing import cast
 from test_type_alias_unsupported import simulate_unadopted_syntax
 
 import shikake
-from shikake._mica.kinds import Kind, KindIndex, load_kind_index
+from shikake._mica.kinds import DefinitionIndex, Kind, load_definition_index
 from shikake._mica.model import Model, ModelFactory
 
 SAMPLE = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "shipping.py"
 
 
-class KindIndexTests(unittest.TestCase):
+class DefinitionIndexTests(unittest.TestCase):
     def test_shikumi_description_and_classification(self) -> None:
-        index = load_kind_index()
+        index = load_definition_index()
         self.assertEqual(len(index.all_kinds()), 142)
         kind = index.get("model.value.access.index")
         self.assertEqual(kind.parent_id, "model.value.access")
@@ -28,9 +28,11 @@ class KindIndexTests(unittest.TestCase):
             [spec.role for spec in index.require_structure(kind.id).parts],
             ["target", "index"],
         )
-        self.assertTrue(index.is_a(kind.id, "model.value"))
-        self.assertTrue(index.is_a(kind.id, kind.id))
-        self.assertFalse(index.is_a("model.statement.branch", "model.value"))
+        self.assertTrue(index.classified_under(kind.id, "model.value"))
+        self.assertTrue(index.classified_under(kind.id, kind.id))
+        self.assertFalse(
+            index.classified_under("model.statement.branch", "model.value")
+        )
         self.assertEqual(index.parent("model"), None)
         with self.assertRaises(KeyError):
             index.get("model.not_defined")
@@ -57,8 +59,8 @@ class KindIndexTests(unittest.TestCase):
             sys.path.insert(0, str(root))
             try:
                 source = importlib.import_module("mica_kind_test_fragments")
-                index = load_kind_index(source)
-                self.assertTrue(index.is_a("model.access", "model"))
+                index = load_definition_index(source)
+                self.assertTrue(index.classified_under("model.access", "model"))
 
                 # Add another module with no changes to Shikumi regulations/loader.
                 (package / "child.py").write_text(
@@ -69,9 +71,11 @@ class KindIndexTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 importlib.invalidate_caches()
-                extended = load_kind_index(source)
+                extended = load_definition_index(source)
                 self.assertEqual(len(extended.all_kinds()), 3)
-                self.assertTrue(extended.is_a("model.access.child", "model"))
+                self.assertTrue(
+                    extended.classified_under("model.access.child", "model")
+                )
 
                 (package / "invalid.py").write_text(
                     "from shikake._mica.kinds.regulation import kind_id, parent_id\n"
@@ -82,7 +86,7 @@ class KindIndexTests(unittest.TestCase):
                 )
                 importlib.invalidate_caches()
                 with self.assertRaisesRegex(ValueError, "unknown parent"):
-                    load_kind_index(source)
+                    load_definition_index(source)
 
                 (package / "invalid.py").unlink()
                 (package / "duplicate.py").write_text(
@@ -94,7 +98,7 @@ class KindIndexTests(unittest.TestCase):
                 )
                 importlib.invalidate_caches()
                 with self.assertRaisesRegex(ValueError, "duplicate Kind ID"):
-                    load_kind_index(source)
+                    load_definition_index(source)
             finally:
                 sys.path.remove(str(root))
                 for name in tuple(sys.modules):
@@ -103,18 +107,18 @@ class KindIndexTests(unittest.TestCase):
                     ):
                         del sys.modules[name]
 
-    def test_invalid_kind_index_cannot_be_silent(self) -> None:
+    def test_invalid_definition_index_cannot_be_silent(self) -> None:
         with self.assertRaisesRegex(ValueError, "duplicate Kind ID"):
-            KindIndex((Kind("model", None), Kind("model", None)))
+            DefinitionIndex((Kind("model", None), Kind("model", None)))
         with self.assertRaisesRegex(ValueError, "missing parent"):
-            KindIndex((Kind("model", None), Kind("child", None)))
+            DefinitionIndex((Kind("model", None), Kind("child", None)))
         with self.assertRaisesRegex(ValueError, "unknown parent"):
-            KindIndex((Kind("model", None), Kind("child", "missing")))
+            DefinitionIndex((Kind("model", None), Kind("child", "missing")))
         with self.assertRaisesRegex(ValueError, "cyclic Kind ancestry"):
-            KindIndex((Kind("model", None), Kind("a", "b"), Kind("b", "a")))
+            DefinitionIndex((Kind("model", None), Kind("a", "b"), Kind("b", "a")))
 
     def test_factory_rejects_missing_or_invalid_roles(self) -> None:
-        f = ModelFactory(shikake.kind_index())
+        f = ModelFactory(shikake.definition_index())
         with self.assertRaisesRegex(ValueError, "expected roles"):
             f.make("model.value.named", other="x")
         with self.assertRaisesRegex(TypeError, "shape text"):
@@ -212,13 +216,13 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(
             sum(node.kind.id == "model.statement.assignment" for node in nodes), 4
         )
-        defined_ids = {kind.id for kind in shikake.kind_index().all_kinds()}
+        defined_ids = {kind.id for kind in shikake.definition_index().all_kinds()}
         for node in nodes:
             self.assertEqual(
                 tuple(part.role for part in node.parts()),
                 tuple(
                     spec.role
-                    for spec in shikake.kind_index()
+                    for spec in shikake.definition_index()
                     .require_structure(node.kind.id)
                     .parts
                 ),

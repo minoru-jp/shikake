@@ -165,7 +165,7 @@ class ExternalModelingTests(unittest.TestCase):
             load_external_definitions(collisions)
         with self.assertRaises(ValueError):
             shikake.parse_source(
-                "pass", index=shikake.kind_index(), definitions=definition
+                "pass", index=shikake.definition_index(), definitions=definition
             )
         empty = ModuleType("empty_external_description")
         with self.assertRaises(ValueError):

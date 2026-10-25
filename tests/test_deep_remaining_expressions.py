@@ -6,7 +6,7 @@ import ast
 import unittest
 
 from shikake import inspect_source, parse_source
-from shikake._mica.kinds import kind_index
+from shikake._mica.kinds import definition_index
 from shikake._mica.parser import _Builder
 
 
@@ -34,7 +34,7 @@ class DeepRemainingExpressionsTests(unittest.TestCase):
                 expression = ast.Dict(
                     keys=[ast.Constant(value="key")], values=[expression]
                 )
-        builder = _Builder(kind_index())
+        builder = _Builder(definition_index())
         modeled = builder.expression(expression)
         kinds = [item.kind.id for item in modeled.walk()]
         self.assertEqual(kinds[0], "model.value.collection.mapping")
@@ -65,14 +65,14 @@ class DeepRemainingExpressionsTests(unittest.TestCase):
                     value=expression,
                     generators=generators,
                 )
-        model = _Builder(kind_index()).expression(expression)
+        model = _Builder(definition_index()).expression(expression)
         kinds = [item.kind.id for item in model.walk()]
         self.assertEqual(
             kinds.count("model.structural_part.comprehension_clause"), 1350
         )
         self.assertIn("model.value.comprehension.dict", kinds)
         self.assertIn("model.value.comprehension.list", kinds)
-        self.assertEqual(model, _Builder(kind_index()).expression(expression))
+        self.assertEqual(model, _Builder(definition_index()).expression(expression))
 
     def test_deep_format_strings_and_format_specs(self) -> None:
         expression: ast.expr = ast.Constant(value="leaf")
@@ -86,11 +86,11 @@ class DeepRemainingExpressionsTests(unittest.TestCase):
                     )
                 ]
             )
-        model = _Builder(kind_index()).expression(expression)
+        model = _Builder(definition_index()).expression(expression)
         kinds = [item.kind.id for item in model.walk()]
         self.assertEqual(kinds.count("model.value.interpolated_string"), 1400)
         self.assertEqual(kinds.count("model.structural_part.formatted_field"), 1400)
-        self.assertEqual(model, _Builder(kind_index()).expression(expression))
+        self.assertEqual(model, _Builder(definition_index()).expression(expression))
 
     def test_nested_lambda_defaults_do_not_recurse(self) -> None:
         expression: ast.expr = ast.Constant(value=5)
@@ -99,7 +99,7 @@ class DeepRemainingExpressionsTests(unittest.TestCase):
                 args=_lambda_args(default=expression),
                 body=ast.Name(id="param", ctx=ast.Load()),
             )
-        model = _Builder(kind_index()).expression(expression)
+        model = _Builder(definition_index()).expression(expression)
         kinds = [part.kind.id for part in model.walk()]
         self.assertEqual(kinds.count("model.value.function_expression"), 1250)
         self.assertEqual(kinds.count("model.definition.parameter"), 1250)
@@ -118,7 +118,7 @@ class DeepRemainingExpressionsTests(unittest.TestCase):
                     target=ast.Name(id="result", ctx=ast.Store()),
                     value=expression,
                 )
-        model = _Builder(kind_index()).expression(expression)
+        model = _Builder(definition_index()).expression(expression)
         kinds = [part.kind.id for part in model.walk()]
         self.assertEqual(kinds.count("model.value.binding"), 700)
         self.assertEqual(kinds.count("model.value.operation.comparison.equal"), 700)

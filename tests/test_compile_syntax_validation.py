@@ -141,7 +141,7 @@ class CompileSyntaxValidationTests(unittest.TestCase):
             statement.is_lazy = 1  # type: ignore[attr-defined]  # new on 3.15
             module.body = [statement]
             # Direct builder covers 3.15's AST flag on older interpreters.
-            parsed = _Builder(shikake.kind_index()).module(module)
+            parsed = _Builder(shikake.definition_index()).module(module)
             statement_model = parsed.get_nodes("body")[0]
             self.assertEqual(statement_model.features, ("lazy",))
             self.assertTrue(
@@ -154,7 +154,7 @@ class CompileSyntaxValidationTests(unittest.TestCase):
         assert isinstance(assignment, ast.Assign)
         assert isinstance(assignment.value, ast.DictComp)
         assignment.value.value = cast(Any, None)
-        result = _Builder(shikake.kind_index()).module(module)
+        result = _Builder(shikake.definition_index()).module(module)
         expression = result.get_nodes("body")[0].get_node("value")
         self.assertEqual(expression.kind.id, "model.value.collection.mapping")
         (detail,) = expression.get_nodes("inputs")

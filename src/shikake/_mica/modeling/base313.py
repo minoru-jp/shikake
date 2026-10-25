@@ -232,7 +232,7 @@ def build_expression(
                 else None
             )
             model = (
-                f.make(type_mapping.kind_id, span=span)
+                f.make(type_mapping.kind_id, span=span, features=type_mapping.features)
                 if type_mapping is not None
                 else f.make("model.value.named", span=span, name=current.id)
             )
@@ -284,7 +284,9 @@ def build_expression(
             )
             if type_mapping is not None:
                 built.pop(current.value)
-                model = f.make(type_mapping.kind_id, span=span)
+                model = f.make(
+                    type_mapping.kind_id, span=span, features=type_mapping.features
+                )
             else:
                 model = f.make(
                     "model.value.access.attribute",

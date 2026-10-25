@@ -19,7 +19,7 @@ from .ast_facts import SyntaxFacts
 from .base_references import BaseReference
 from .builtin_names import BUILTIN_NAMES
 from .import_policy import ImportPolicy, ImportPolicyError
-from .kinds import KindIndex
+from .kinds import DefinitionIndex
 from .model import Model, ModelFactory, SourceSpan
 from .package import (
     OverrideCandidate,
@@ -209,7 +209,7 @@ def _syntax_issue(
 def _inspect_tree(
     tree: ast.Module,
     *,
-    index: KindIndex,
+    index: DefinitionIndex,
     filename: str,
     name: str,
     context: _ModelingContext,
@@ -257,7 +257,7 @@ def inspect_source(
     source: str,
     *,
     filename: str = "<source>",
-    index: KindIndex | None = None,
+    index: DefinitionIndex | None = None,
     definitions: ModuleType | ExternalDefinitions | None = None,
     syntax_validation: SyntaxValidation = "compile",
     import_policy: ImportPolicy | None = None,
@@ -317,7 +317,7 @@ def inspect_source(
 def inspect_package(
     directory: str | Path,
     *,
-    index: KindIndex | None = None,
+    index: DefinitionIndex | None = None,
     analyses: Iterable[str] | None = None,
     definitions: ModuleType | ExternalDefinitions | None = None,
     include: Callable[[Path, bool], bool] | None = None,

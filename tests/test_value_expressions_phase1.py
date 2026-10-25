@@ -61,7 +61,9 @@ class ValueExpressionTests(unittest.TestCase):
         )
         self.assertEqual(one(dimensions[0], "start").get("value"), 1)
         self.assertIsNone(dimensions[1].get("start"))
-        self.assertTrue(shikake.kind_index().is_a(interval.kind.id, "model.value"))
+        self.assertTrue(
+            shikake.definition_index().classified_under(interval.kind.id, "model.value")
+        )
 
     def test_formatted_string_keeps_order_conversion_and_nested_spec(self) -> None:
         model = value('f"Hello {name!r}, total={total:{width}.{precision}f}!"')
@@ -118,7 +120,9 @@ class ValueExpressionTests(unittest.TestCase):
         self.assertEqual(one(selection, "when_true").get("value"), 0)
         self.assertEqual(one(selection, "when_false").get("name"), "rate")
         self.assertFalse(
-            shikake.kind_index().is_a(selection.kind.id, "model.statement.branch")
+            shikake.definition_index().classified_under(
+                selection.kind.id, "model.statement.branch"
+            )
         )
         nested = value("a if ready else b if alternative else c")
         self.assertEqual(one(nested, "when_false").kind.id, "model.value.selection")
@@ -135,7 +139,9 @@ class ValueExpressionTests(unittest.TestCase):
             ],
         )
         self.assertTrue(
-            shikake.kind_index().is_a(model.kind.id, "model.value.collection")
+            shikake.definition_index().classified_under(
+                model.kind.id, "model.value.collection"
+            )
         )
         self.assertEqual(value("{}").kind.id, "model.value.collection.mapping")
         self.assertEqual(len(many(value("{1}"), "inputs")), 1)
@@ -153,7 +159,7 @@ class ValueExpressionTests(unittest.TestCase):
         self.assertEqual(inspected.issues, ())
         self.assertEqual(inspected.model, strict)
         self.assertEqual(len(many(strict, "body")), 2)
-        self.assertEqual(len(shikake.kind_index().all_kinds()), 142)
+        self.assertEqual(len(shikake.definition_index().all_kinds()), 142)
         # A type comment has no role in Strict or Partial Model generation.
         self.assertTrue(shikake.inspect_source("x = 1  # type: int\n").complete)
 

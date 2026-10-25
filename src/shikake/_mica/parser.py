@@ -14,7 +14,7 @@ from .ast_facts import SyntaxFacts, collect_syntax_facts
 from .builtin_collections import BuiltinCollectionRecognition
 from .external_structures import _ExternalStructures
 from .import_policy import ImportPolicy, ImportPolicyError, check_imports
-from .kinds import KindIndex, kind_index
+from .kinds import DefinitionIndex, definition_index
 from .model import Model, ModelFactory, SourceSpan
 
 SyntaxValidation = Literal["compile", "ast"]
@@ -129,7 +129,7 @@ def _has_own_yield(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 class _Builder:
     def __init__(
         self,
-        index: KindIndex,
+        index: DefinitionIndex,
         *,
         on_unsupported: Callable[[UnsupportedSyntaxError, ast.AST], None] | None = None,
         external: _ExternalStructures | None = None,
@@ -717,10 +717,10 @@ class _Builder:
 
 def _external_settings(
     definitions: ModuleType | ExternalDefinitions | None,
-    index: KindIndex | None,
-) -> tuple[KindIndex, ExternalDefinitions | None]:
+    index: DefinitionIndex | None,
+) -> tuple[DefinitionIndex, ExternalDefinitions | None]:
     if definitions is None:
-        return index if index is not None else kind_index(), None
+        return index if index is not None else definition_index(), None
     if isinstance(definitions, ExternalDefinitions):
         if index is not None and index is not definitions.index:
             raise ValueError("index must be omitted when using compiled definitions")
@@ -755,7 +755,7 @@ def _modeling_context(
 
 def _build_module(
     tree: ast.Module,
-    index: KindIndex,
+    index: DefinitionIndex,
     context: _ModelingContext,
     *,
     name: str = "<source>",
@@ -776,7 +776,7 @@ def parse_source(
     source: str,
     *,
     filename: str = "<source>",
-    index: KindIndex | None = None,
+    index: DefinitionIndex | None = None,
     definitions: ModuleType | ExternalDefinitions | None = None,
     syntax_validation: SyntaxValidation = "compile",
     import_policy: ImportPolicy | None = None,

@@ -19,7 +19,7 @@ from .ast_facts import SyntaxFacts
 from .base_references import BaseReference
 from .builtin_names import BUILTIN_NAMES
 from .import_policy import ImportPolicy
-from .kinds import KindIndex
+from .kinds import DefinitionIndex
 from .model import Model, ModelFactory, _clip_repr
 from .parser import (
     SyntaxValidation,
@@ -264,7 +264,7 @@ def _module_identity(folder: Path, path: Path) -> tuple[str, bool]:
 def parse_package(
     directory: str | Path,
     *,
-    index: KindIndex | None = None,
+    index: DefinitionIndex | None = None,
     analyses: Iterable[str] | None = None,
     definitions: ModuleType | ExternalDefinitions | None = None,
     include: Callable[[Path, bool], bool] | None = None,

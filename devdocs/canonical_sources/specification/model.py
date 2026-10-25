@@ -32,7 +32,7 @@ class MODEL:
         level @= MUST
 
     class SPEC_003:
-        """Kindには文字列IDを与え、根 `model` を除く各Kindはただ一つの親Kindを持つ。`KindIndex.is_a` はこの分類上の祖先関係だけを表す。Kindの分類IDから利用側が対応可否を決める。"""
+        """Kindには文字列IDを与え、根 `model` を除く各Kindはただ一つの親Kindを持つ。`DefinitionIndex.classified_under` はこの分類上の祖先関係だけを表す。Kindの分類IDから利用側が対応可否を決める。"""
 
         title @= "Kindの分類木"
         level @= MUST
@@ -50,7 +50,7 @@ class MODEL:
         level @= MUST
 
     class SPEC_006:
-        """FeatureはKindの分類木とは独立した構文上の特徴を表す。`async` および `generator` は規定済みのFunction/Method Kindに付与でき、`lazy` は `model.import.direct` と `model.import.from` にのみ付与できる。`lazy` はソースに明示されたキーワードの存在だけを表し、暗黙の遅延import設定や実際のモジュール初期化時刻は表さない。Featureの付与はPythonの非同期実行や遅延実行をシミュレートすることではない。"""
+        """FeatureはKindの分類木とは独立した構文上の特徴を表す。外部定義からもFeature IDと許可対象Kindを宣言でき、対応する外部Call・Type・GenericのModel構築時にFeatureを明示的に付与できる。許可対象Kindは分類木の子孫を含む。宣言だけではModelにFeatureが自動付与されることはない。`async` および `generator` は規定済みのFunction/Method Kindに付与でき、`lazy` は `model.import.direct` と `model.import.from` にのみ付与できる。`lazy` はソースに明示されたキーワードの存在だけを表し、暗黙の遅延import設定や実際のモジュール初期化時刻は表さない。Featureの付与はPythonの非同期実行や遅延実行をシミュレートすることではない。"""
 
         title @= "Featureの位置付け"
         level @= MUST
@@ -110,15 +110,15 @@ class MODEL:
         level @= MUST
 
     class SPEC_016:
-        """`kind_index()` が返すIndexは、`get`、`parent`、`is_a`、`all_kinds` による分類照会と、`structure_of`、`require_structure`、`get_structure`、`all_structures`、`all_features` による構造・Featureの照会を区別して提供する。`structure_of` の結果からKind親子関係によるStructure継承を推測してはならない。"""
+        """`definition_index()` が返すIndexは、`get`、`parent`、`classified_under`、`all_kinds` による分類照会と、`structure_of`、`require_structure`、`get_structure`、`all_structures`、`all_features`、`defines_role`、`allows_feature` による構造・Featureの照会を区別して提供する。`structure_of` の結果からKind親子関係によるStructure継承を推測してはならない。"""
 
-        title @= "KindIndexによる照会"
+        title @= "DefinitionIndexによる照会"
         level @= MUST
 
     class SPEC_017:
-        """`KindIndex.get` と `get_structure` は未登録IDを `KeyError` として拒否する。`parent` は根Kindで `None` を返し、`is_a` は同一Kindを祖先に含む。`structure_of` は抽象Kindで `None` を返すが、`require_structure` は同じ場合に `ValueError` とする。分類と構造の照会を混同しない。"""
+        """`DefinitionIndex.get` と `get_structure` は未登録IDを `KeyError` として拒否する。`parent` は根Kindで `None` を返し、`classified_under` は同一Kindを祖先に含む。`defines_role` は参照するStructureのrole定義のみを検査し、空値やModelの存在には依存しない。`allows_feature` はそのFeatureの許可対象Kindと分類上の子孫を含む適用可能性を返す。未知のKind・Feature IDでは `KeyError` とする。`structure_of` は抽象Kindで `None` を返すが、`require_structure` は同じ場合に `ValueError` とする。分類と構造の照会を混同しない。"""
 
-        title @= "KindIndex照会の境界と失敗条件"
+        title @= "DefinitionIndex照会の境界と失敗条件"
         level @= MUST
 
     class SPEC_018:
@@ -134,13 +134,13 @@ class MODEL:
         level @= MUST
 
     class SPEC_020:
-        """`kind_index()` は検証済みのメモリ上のIndexを再利用する。公開されたKind・Structure・Featureの照会結果は不変のデータであり、分類木やrole定義を変更するための公開編集APIを設けない。"""
+        """`definition_index()` は検証済みのメモリ上のIndexを再利用する。公開されたKind・Structure・Featureの照会結果は不変のデータであり、分類木やrole定義を変更するための公開編集APIを設けない。"""
 
         title @= "検証済みIndexの再利用と公開操作"
         level @= MUST
 
     class SPEC_021:
-        """`Model` は解析APIが返す結果を読み取るための公開型であり、利用者による直接の `Model(...)` 構築はサポートしない。Kind・Structure・Featureの整合性保証は、正規の `parse_*` / `inspect_*` 解析経路でライブラリが生成したModelに適用する。利用者が独自に構築したModelの妥当性、そのModelを他のAPIに渡したときの動作は保証しない。公開されたコンストラクタの内部引数は構築APIの契約に含めない。"""
+        """`Model` は解析APIが返す結果を読み取るための公開型であり、利用者による直接の `Model(...)` 構築はサポートしない。Kind・Structure・Featureの整合性保証は、正規の `parse_*` / `inspect_*` 解析経路でライブラリが生成したModelに適用する。利用者が独自に構築したModelの妥当性、そのModelを他のAPIに渡したときの動作は保証しない。直接構築したModelではFeatureタプルを自動的に並べ替えず、タプルの順序は構造的等価性・ハッシュに影響する。正規解析経路のModelFactoryが生成するModelのFeatureはID昇順に正規化される。公開されたコンストラクタの内部引数は構築APIの契約に含めない。"""
 
         title @= "解析結果としてのModelと直接構築の保証境界"
         level @= MUST
@@ -162,4 +162,10 @@ class MODEL:
         """`format_model_tree(model, *, max_depth=8, max_nodes=200, max_chars=12000)` はModelの構成木を診断用テキストとして反復的に表示する。Kind ID、role、直接のスカラー概要、取得可能なスパンとFeatureを表示し、子Modelは指定された深さ・ノード数・文字数の範囲で辿る。深さの基準はrootが0、ノード数にはrootを含める。max_depthが負、max_nodesが1未満、max_charsが4未満の場合はValueErrorとする。文字数上限を超えず、表示は完全なシリアライズ・Modelの同一性判定に使わない。`repr` の契約は変更しない。"""
 
         title @= "制限付きModel構成木の診断表示"
+        level @= MUST
+
+    class SPEC_025:
+        """`ModelRef(model, source_path)` は利用側が必要時に明示的に生成する、Model個体とソースパスを組にした不変の参照型である。`source_path` は `str | pathlib.Path` を受け取り、`pathlib.Path` に変換して保持する。`ModelRef` の等価性は `model is other.model` と `source_path == other.source_path` の両方で決まり、ハッシュもこの組み合わせに対応する。Modelの構造的比較・ハッシュを呼び出してはならない。ファイルの存在確認、絶対パス化、`resolve()`、シンボリックリンクの解決は行わず、`Path` 自身の字句的な同値性に従う。ソースの内容・パスの正当性は利用側の責任であり、同一ファイルの再解析で得た別Modelを同一視しない。ModelRefはModelの代替型ではなく、メンバーの委譲や子Modelの自動ラップは提供しない。解析API・関係分析の引数と戻り値は引き続きModelとする。"""
+
+        title @= "ModelRefによる明示的な個体参照"
         level @= MUST

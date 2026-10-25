@@ -1,5 +1,19 @@
 """Model Kind taxonomy defined with Shikumi."""
 
-from .index import Feature, Kind, KindIndex, Structure, kind_index, load_kind_index
+from .index import (
+    DefinitionIndex,
+    Feature,
+    Kind,
+    Structure,
+    definition_index,
+    load_definition_index,
+)
 
-__all__ = ["Feature", "Kind", "KindIndex", "Structure", "kind_index", "load_kind_index"]
+__all__ = [
+    "DefinitionIndex",
+    "Feature",
+    "Kind",
+    "Structure",
+    "definition_index",
+    "load_definition_index",
+]

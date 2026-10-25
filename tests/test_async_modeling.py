@@ -34,7 +34,7 @@ def definition(root: Model, name: str) -> Model:
 
 class AsyncModelingTests(unittest.TestCase):
     def test_kind_structure_feature_independence(self) -> None:
-        index = shikake.kind_index()
+        index = shikake.definition_index()
         self.assertEqual(len(index.all_kinds()), 142)
         self.assertEqual(len(index.all_structures()), 62)
         self.assertEqual(
@@ -257,7 +257,7 @@ async def process(stream):
             self.assertEqual(candidate.base_method.features, ("async",))
 
     def test_model_factory_still_checks_feature_applicability(self) -> None:
-        index = shikake.kind_index()
+        index = shikake.definition_index()
         factory = ModelFactory(index)
         with self.assertRaisesRegex(ValueError, "not applicable"):
             factory.make(

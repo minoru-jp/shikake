@@ -67,7 +67,7 @@ class AstKindCorrespondenceTests(unittest.TestCase):
     def test_catalog_uses_only_concrete_registered_kinds(self) -> None:
         catalog = _catalog()
         self.assertEqual(len(catalog), 136)
-        kinds = {kind.id: kind for kind in shikake.kind_index().all_kinds()}
+        kinds = {kind.id: kind for kind in shikake.definition_index().all_kinds()}
         for label, kind in catalog.items():
             with self.subTest(label=label):
                 self.assertIn(kind, kinds)
@@ -652,8 +652,8 @@ class AstKindCorrespondenceTests(unittest.TestCase):
                 self.assertEqual(model.kind.id, case.kind)
                 self.assertEqual(model.features, case.features)
                 self.assertEqual(
-                    shikake.kind_index().require_structure(case.kind).id,
-                    shikake.kind_index().get(case.kind).structure_id,
+                    shikake.definition_index().require_structure(case.kind).id,
+                    shikake.definition_index().get(case.kind).structure_id,
                 )
 
 

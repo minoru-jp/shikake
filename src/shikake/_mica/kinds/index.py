@@ -48,7 +48,7 @@ class Feature:
     allowed_kind_ids: tuple[str, ...]
 
 
-class KindIndex:
+class DefinitionIndex:
     """Single-parent Kind tree with independently indexed Structures/Features."""
 
     def __init__(
@@ -134,7 +134,7 @@ class KindIndex:
         parent_id = self.get(kind_id).parent_id
         return self.get(parent_id) if parent_id is not None else None
 
-    def is_a(self, kind_id: str, ancestor_id: str) -> bool:
+    def classified_under(self, kind_id: str, ancestor_id: str) -> bool:
         current: Kind | None = self.get(kind_id)
         self.get(ancestor_id)
         while current is not None:
@@ -142,6 +142,20 @@ class KindIndex:
                 return True
             current = self.parent(current.id)
         return False
+
+    def defines_role(self, kind_id: str, role: str) -> bool:
+        """Check the exact Structure definition, never inherited roles or values."""
+        structure = self.structure_of(kind_id)
+        return structure is not None and any(p.role == role for p in structure.parts)
+
+    def allows_feature(self, kind_id: str, feature_id: str) -> bool:
+        """Check declared applicability, including descendants of allowed Kinds."""
+        self.get(kind_id)
+        feature = self._features[feature_id]
+        return any(
+            self.classified_under(kind_id, target)
+            for target in feature.allowed_kind_ids
+        )
 
     def structure_of(self, kind_id: str) -> Structure | None:
         """Return this Kind's exact Structure, without ancestor inheritance."""
@@ -173,9 +187,7 @@ class KindIndex:
             feature = self._features.get(feature_id)
             if feature is None:
                 raise ValueError(f"unknown Model feature: {feature_id}")
-            if not any(
-                self.is_a(kind_id, target) for target in feature.allowed_kind_ids
-            ):
+            if not self.allows_feature(kind_id, feature_id):
                 raise ValueError(f"feature {feature_id} is not applicable to {kind_id}")
 
     def all_kinds(self) -> tuple[Kind, ...]:
@@ -185,7 +197,7 @@ class KindIndex:
         return tuple(self._features.values())
 
 
-def _index_from_view(view: SemanticView) -> KindIndex:
+def _index_from_view(view: SemanticView) -> DefinitionIndex:
     entities = (item for item in view.items if item.kind is StructuralKind.ENTITY)
     kinds: list[Kind] = []
     structures: list[Structure] = []
@@ -223,10 +235,10 @@ def _index_from_view(view: SemanticView) -> KindIndex:
             if parents or references or parts:
                 raise ValueError(f"invalid Feature metadata for {feature_ids[0]}")
             features.append(Feature(feature_ids[0], allowed))
-    return KindIndex(tuple(kinds), tuple(structures), tuple(features))
+    return DefinitionIndex(tuple(kinds), tuple(structures), tuple(features))
 
 
-class KindIndexRealizer(Realizer[KindIndex]):
+class DefinitionIndexRealizer(Realizer[DefinitionIndex]):
     """Optional non-persistent realization of the validated description view."""
 
     def check(self, view: SemanticView) -> RealizationCheck:
@@ -238,16 +250,16 @@ class KindIndexRealizer(Realizer[KindIndex]):
             )
         return RealizationCheck(view)
 
-    def realize(self, view: SemanticView) -> KindIndex:
+    def realize(self, view: SemanticView) -> DefinitionIndex:
         return _index_from_view(view)
 
 
-def load_kind_index(source: ModuleType = description) -> KindIndex:
+def load_definition_index(source: ModuleType = description) -> DefinitionIndex:
     """Validate trusted descriptions and realize in-memory taxonomy/layouts."""
     result = KIND_SHIKUMI.validate(source, placement=("mica", "kinds", "description"))
     if not result.is_valid:
         raise ValueError(f"invalid Shikumi Kind description: {result.diagnostics}")
-    realizer = KindIndexRealizer()
+    realizer = DefinitionIndexRealizer()
     check = realizer.check(result.view)
     if not check.is_realizable:
         raise ValueError(f"invalid Kind realization: {check.diagnostics}")
@@ -255,5 +267,5 @@ def load_kind_index(source: ModuleType = description) -> KindIndex:
 
 
 @lru_cache(maxsize=1)
-def kind_index() -> KindIndex:
-    return load_kind_index()
+def definition_index() -> DefinitionIndex:
+    return load_definition_index()

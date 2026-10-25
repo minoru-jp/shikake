@@ -11,8 +11,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shikake._mica.kinds import Kind, KindIndex, Structure, kind_index, load_kind_index
-from shikake._mica.kinds.index import KindIndexRealizer
+from shikake._mica.kinds import (
+    DefinitionIndex,
+    Kind,
+    Structure,
+    definition_index,
+    load_definition_index,
+)
+from shikake._mica.kinds.index import DefinitionIndexRealizer
 from shikake._mica.kinds.regulation import KIND_SHIKUMI
 from shikake._mica.kinds.regulation import PartContract as Role
 from shikake._mica.model import ModelFactory
@@ -20,7 +26,7 @@ from shikake._mica.model import ModelFactory
 
 class IndependentStructureTests(unittest.TestCase):
     def test_sharing_does_not_imply_ancestry(self) -> None:
-        index = kind_index()
+        index = definition_index()
         self.assertEqual(len(index.all_kinds()), 142)
         self.assertEqual(len(index.all_structures()), 62)
         add = index.require_structure("model.value.operation.addition")
@@ -29,7 +35,9 @@ class IndependentStructureTests(unittest.TestCase):
         self.assertEqual(add.id, "binary_operands")
         self.assertEqual([part.role for part in add.parts], ["left", "right"])
         self.assertFalse(
-            index.is_a("model.value.operation.comparison.equal", "model.statement")
+            index.classified_under(
+                "model.value.operation.comparison.equal", "model.statement"
+            )
         )
         self.assertNotIn(
             "model.definition.generator", {k.id for k in index.all_kinds()}
@@ -44,13 +52,13 @@ class IndependentStructureTests(unittest.TestCase):
         )
 
     def test_classification_does_not_imply_structure_inheritance(self) -> None:
-        index = kind_index()
+        index = definition_index()
         simple = index.require_structure("model.statement.assignment")
         augmented = index.require_structure(
             "model.statement.assignment.augmented.addition"
         )
         self.assertTrue(
-            index.is_a(
+            index.classified_under(
                 "model.statement.assignment.augmented", "model.statement.assignment"
             )
         )
@@ -61,7 +69,7 @@ class IndependentStructureTests(unittest.TestCase):
         self.assertIsNotNone(index.structure_of("model.statement.pass"))
 
     def test_factory_checks_structure_not_parent_roles(self) -> None:
-        index = kind_index()
+        index = definition_index()
         factory = ModelFactory(index)
         name = factory.make("model.value.named", name="item")
         value = factory.make("model.value.literal", value=1)
@@ -102,7 +110,7 @@ class IndependentStructureTests(unittest.TestCase):
                     any(d.code == "mica.description.graph" for d in checked.diagnostics)
                 )
                 with self.assertRaisesRegex(ValueError, "unknown Structure"):
-                    load_kind_index(source)
+                    load_definition_index(source)
             finally:
                 sys.path.remove(str(root))
                 for name in tuple(sys.modules):
@@ -113,19 +121,21 @@ class IndependentStructureTests(unittest.TestCase):
 
     def test_index_rejects_duplicate_roles_and_missing_structures(self) -> None:
         with self.assertRaisesRegex(ValueError, "duplicate or empty part role"):
-            KindIndex(
+            DefinitionIndex(
                 (Kind("model", None), Kind("model.child", "model", "dupe")),
                 (Structure("dupe", (Role("x", "node"), Role("x", "nodes"))),),
             )
         with self.assertRaisesRegex(ValueError, "unknown Structure"):
-            KindIndex((Kind("model", None), Kind("model.child", "model", "missing")))
+            DefinitionIndex(
+                (Kind("model", None), Kind("model.child", "model", "missing"))
+            )
         with self.assertRaisesRegex(ValueError, "duplicate Structure ID"):
-            KindIndex(
+            DefinitionIndex(
                 (Kind("model", None),), (Structure("dup", ()), Structure("dup", ()))
             )
 
     def test_async_feature_keeps_the_ordinary_kind_and_structure(self) -> None:
-        index = kind_index()
+        index = definition_index()
         self.assertEqual(
             [f.id for f in index.all_features()], ["async", "generator", "lazy"]
         )
@@ -157,7 +167,7 @@ class IndependentStructureTests(unittest.TestCase):
             description, placement=("mica", "kinds", "description")
         )
         self.assertTrue(result.is_valid)
-        realizer = KindIndexRealizer()
+        realizer = DefinitionIndexRealizer()
         self.assertTrue(realizer.check(result.view).is_realizable)
         index = realizer.realize(result.view)
         self.assertEqual(len(index.all_kinds()), 142)

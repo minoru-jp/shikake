@@ -10,8 +10,9 @@ from .inspection import (
     inspect_package,
     inspect_source,
 )
-from .kinds import Feature, Kind, KindIndex, Structure, kind_index
+from .kinds import DefinitionIndex, Feature, Kind, Structure, definition_index
 from .model import Model, ModelPart, SourceSpan
+from .model_ref import ModelRef
 from .package import OverrideCandidate, PackageModel, parse_package
 from .parser import UnsupportedSyntaxError, parse_source
 from .position import utf8_byte_column_to_character_column
@@ -22,14 +23,15 @@ __all__ = [
     "BaseReference",
     "BindingState",
     "Comment",
+    "DefinitionIndex",
     "Feature",
     "ImportPolicy",
     "ImportPolicyError",
     "InspectionIssue",
     "Kind",
-    "KindIndex",
     "Model",
     "ModelPart",
+    "ModelRef",
     "NameBinding",
     "OverrideCandidate",
     "PackageInspection",
@@ -40,10 +42,10 @@ __all__ = [
     "Structure",
     "UnsupportedSyntaxError",
     "collect_comments",
+    "definition_index",
     "format_model_tree",
     "inspect_package",
     "inspect_source",
-    "kind_index",
     "parse_package",
     "parse_source",
     "utf8_byte_column_to_character_column",

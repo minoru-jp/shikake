@@ -65,7 +65,7 @@ class SpecificationStructureTests(unittest.TestCase):
 
     def test_layouts_cover_exact_trusted_kind_and_structure_contracts(self) -> None:
         """The canonical shape catalog must not drift from trusted descriptions."""
-        from shikake import kind_index
+        from shikake import definition_index
 
         tree = ast.parse((SPEC_DIR / "layouts.py").read_text(encoding="utf-8"))
         root = next(node for node in tree.body if isinstance(node, ast.ClassDef))
@@ -107,7 +107,7 @@ class SpecificationStructureTests(unittest.TestCase):
             )
             documented[structure_id] = (roles, kinds)
 
-        index = kind_index()
+        index = definition_index()
         self.assertEqual(set(documented), {s.id for s in index.all_structures()})
         for structure in index.all_structures():
             roles = (
@@ -174,7 +174,7 @@ class SpecificationStructureTests(unittest.TestCase):
         public = (api_dir / "public.py").read_text(encoding="utf-8")
         for method in (
             "Model.get_node",
-            "KindIndex.require_structure",
+            "DefinitionIndex.require_structure",
             "PackageModel.bases_for",
         ):
             self.assertIn(f"shikake.{method}", public)

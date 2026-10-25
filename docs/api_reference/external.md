@@ -65,7 +65,7 @@ Output:
 
 The `sample.memory` interface module does **not** need to exist. The source under analysis and its import targets are never executed or imported; the **trusted declaration module** is ordinary Python code and must be safe to import. The registered call yields a Model with Kind `demo.memory.allocate` instead of an ordinary call Model. This is not dynamic resolution of arbitrary library calls. A specialized Call is created only after its complete argument mapping has matched; missing or extra arguments retain an ordinary Call Model. Definite lexical shadowing by function parameters, local bindings, or comprehension targets also prevents specialized recognition. Lambda defaults and the first comprehension iterable are evaluated in their enclosing scope; comprehension bodies within classes do not treat class locals as visible. Star imports are not expanded or resolved.
 
-**Current limitation:** External Shikumi declarations support adding **Kinds and Structures**, but **not Features**. Call, Type, and Generic mappings can be declared with either Shikumi or the builder. External Feature declarations are rejected.
+**Supported declarations:** Trusted Shikumi declarations can add **Kinds, Structures and Features**. Call, Type, and Generic mappings can explicitly attach externally declared Features, but never built-in Features such as `async`, `generator`, or `lazy`.
 
 ## Programmatic builder example
 
@@ -114,23 +114,23 @@ Positions are contiguous, starting at zero.
 
 ## API_003: `shikake.external.ExternalDefinitions`
 
-**Type.** Hold a validated external KindIndex and registered call mappings.
+**Type.** Hold a DefinitionIndex, registered interface mappings, and provenance of declared external Features.
 
-- **Inputs:** `index: KindIndex, mappings: tuple[CallMapping, ...]`
+- **Inputs:** `index: DefinitionIndex, mappings: tuple[CallMapping, ...], type_mappings: tuple[TypeMapping, ...], generic_mappings: tuple[GenericMapping, ...], external_feature_ids: frozenset[str] = frozenset()`
 - **Result:** `ExternalDefinitions`
-- **Specifications:** [EXTERNAL.SPEC_001](../../devdocs/canonical_sources/specification/external.py)
+- **Specifications:** [EXTERNAL.SPEC_001](../../devdocs/canonical_sources/specification/external.py), [EXTERNAL.SPEC_018](../../devdocs/canonical_sources/specification/external.py)
 
-Supply the result to the parser using `definitions=`.
+Supply the result to the parser using `definitions=`. `external_feature_ids` records externally declared Feature IDs available to mappings. **Only the builder and Shikumi loader validate declarations and provenance.** Constructing `ExternalDefinitions(...)` directly is a low-level, trusted operation: callers are responsible for the consistency of all fields, including `external_feature_ids`. This is not a tamper-proof security boundary for untrusted inputs.
 
 ## API_004: `shikake.external.load_external_definitions`
 
 **Operation.** Validate a trusted Python description module with Shikumi and load its external definitions.
 
-- **Inputs:** `source: ModuleType, *, base: KindIndex | None = None`
+- **Inputs:** `source: ModuleType, *, base: DefinitionIndex | ExternalDefinitions | None = None`
 - **Result:** `ExternalDefinitions`
 - **Specifications:** [EXTERNAL.SPEC_001](../../devdocs/canonical_sources/specification/external.py)
 
-The source being analyzed is never executed.
+The source being analyzed is never executed. For composition use `base=ExternalDefinitions`: this preserves previous mappings and external Feature provenance. The built-in `DefinitionIndex` is accepted as `base`, but a custom or previously extended index is rejected: it cannot preserve mappings or external Feature provenance. To compose extensions use `load_external_definitions(module, base=previous)` (with `previous` an `ExternalDefinitions`) or `ExternalDefinitionsBuilder(base=previous)`. Do not pass an `ExternalDefinitions` to a parser's `index=` parameter.
 
 ## API_005: `shikake.external.Role`
 
@@ -226,7 +226,7 @@ Declaration order is preserved.
 
 **Type.** An immutable mapping from a registered call target to its output Kind and arguments.
 
-- **Inputs:** `target: ImportedCall, kind_id: str, arguments: tuple[Argument, ...]`
+- **Inputs:** `target: ImportedCall, kind_id: str, arguments: tuple[Argument, ...], features: tuple[str, ...] = ()`
 - **Result:** `CallMapping`
 - **Specifications:** [EXTERNAL.SPEC_003](../../devdocs/canonical_sources/specification/external.py), [EXTERNAL.SPEC_007](../../devdocs/canonical_sources/specification/external.py)
 
@@ -234,13 +234,13 @@ Stored in `ExternalDefinitions.mappings`.
 
 ## API_015: `shikake.external.ExternalDefinitionsBuilder`
 
-**Type.** Build validated external Kinds, Structures, and call mappings from trusted Python data.
+**Type.** Build validated external Kinds, Structures, Features, and interface mappings from trusted Python data.
 
-- **Inputs:** `__init__(*, base: KindIndex | None = None)`; `add_kind(kind_id: str, parent_id: str, structure_id: str | None = None)`; `add_structure(structure_id: str, parts: Sequence[Role])`; `add_mapping(target: str | ImportedCall, kind_id: str, arguments: Sequence[str] | Sequence[Argument])`; `add_call(target: str | ImportedCall, kind_id: str, arguments: Sequence[str] | Sequence[Argument], *, parent_id: str = 'model.value', structure_id: str | None = None)`; `add_type(target: str | ImportedType, kind_id: str, *, parent_id: str = 'model.value')`; `add_generic(target: str | ImportedGeneric, kind_id: str, roles: Sequence[str], *, parent_id: str = 'model.value')`
+- **Inputs:** `__init__(*, base: DefinitionIndex | ExternalDefinitions | None = None)`; `add_kind(kind_id: str, parent_id: str, structure_id: str | None = None)`; `add_structure(structure_id: str, parts: Sequence[Role])`; `add_feature(feature_id: str, allowed_kind_ids: Sequence[str])`; `add_mapping(target: str | ImportedCall, kind_id: str, arguments: Sequence[str] | Sequence[Argument], *, features: Sequence[str] = ())`; `add_call(target: str | ImportedCall, kind_id: str, arguments: Sequence[str] | Sequence[Argument], *, parent_id: str = 'model.value', structure_id: str | None = None, features: Sequence[str] = ())`; `add_type(target: str | ImportedType, kind_id: str, *, parent_id: str = 'model.value', features: Sequence[str] = ())`; `add_generic(target: str | ImportedGeneric, kind_id: str, roles: Sequence[str], *, parent_id: str = 'model.value', features: Sequence[str] = ())`
 - **Result:** `build() -> ExternalDefinitions`
 - **Specifications:** [EXTERNAL.SPEC_012](../../devdocs/canonical_sources/specification/external.py)
 
-`add_call` creates a Kind and a mapping together. If `structure_id` is omitted, it also creates a dedicated node-role Structure. For an already-declared Kind, use `add_mapping`. `arguments` accepts a sequence of names (each used for both the role and keyword) or a sequence of `Argument` objects. Mix neither, and do not pass a single string. The same KindIndex and call-mapping constraints apply as for `load_external_definitions`. This is a convenience API, not a new import-resolution mechanism or support for external Features.
+`add_call` creates a Kind and a mapping together. If `structure_id` is omitted, it also creates a dedicated node-role Structure. For an already-declared Kind, use `add_mapping`. `arguments` accepts a sequence of names (each used for both the role and keyword) or a sequence of `Argument` objects. Mix neither, and do not pass a single string. The same DefinitionIndex and call-mapping constraints apply as for `load_external_definitions`. External Features can be registered with `add_feature`. The `features=` argument explicitly attaches IDs to a matching Call, Type or Generic Model. Definitions and mapping attachments receive the same validation as Shikumi declarations. External Kind, Structure, and Feature IDs require at least two nonempty dot-separated segments, each satisfying `str.isidentifier()`. Python keywords and Unicode identifiers are valid segments (for example `dsl.stmt.return`, `gpu.async`, and `vendor.ｆｏｏ`); the leading `model` namespace is reserved. External IDs are **not** Unicode-normalized (including NFKC); identity and duplicate detection use the original strings, so visually similar IDs may be different. Use `base=ExternalDefinitions` to compose registrations; an extended `DefinitionIndex` alone is rejected because it cannot preserve mappings or external Feature provenance. Models built by the standard parsing/ModelFactory path normalize Features into ascending ID order, independent of mapping declaration order. Directly constructing `Model(...)` does not perform that normalization; tuple order then affects structural equality and hashing, and direct construction is unsupported. This is not a new import-resolution mechanism.
 
 ## Type and Generic interface modeling (v0.0.4)
 
@@ -296,3 +296,59 @@ The corresponding Shikumi declaration uses `match_type @= ImportedType("pyinto.k
 ## API_022: `shikake.external.slot`
 
 **Value.** Shikumi assignment of each Generic node role in positional order.
+
+## API_023: `shikake.external.feature_id`
+
+**Value.** Declare the ID of an external Feature with Shikumi.
+
+- **Inputs:** `feature_id: str`
+- **Result:** `Shikumi field assignment`
+- **Specifications:** [EXTERNAL.SPEC_016](../../devdocs/canonical_sources/specification/external.py)
+
+## API_024: `shikake.external.feature_allowed`
+
+**Value.** Declare a Kind classification on which an external Feature is allowed.
+
+- **Inputs:** `kind_id: str`
+- **Result:** `Shikumi field assignment`
+- **Specifications:** [EXTERNAL.SPEC_016](../../devdocs/canonical_sources/specification/external.py)
+
+One or more allowed Kinds are required. Applicability extends to their descendants.
+
+## API_025: `shikake.external.apply_feature`
+
+**Value.** Explicitly attach a declared Feature to a matching Call, Type or Generic Model.
+
+- **Inputs:** `feature_id: str`
+- **Result:** `Shikumi field assignment`
+- **Specifications:** [EXTERNAL.SPEC_017](../../devdocs/canonical_sources/specification/external.py)
+
+A declaration alone does not attach a Feature. The registered interface must match before its declared Features are applied. The merged DefinitionIndex validates unknown, duplicate, and disallowed Feature IDs at registration time. An external mapping cannot assign built-in Features, even to a Kind where those Features are applicable. Models produced by the standard parsing path store Feature IDs in sorted order; direct `Model(...)` construction does not normalize them.
+
+### External Feature example
+
+The builder and trusted Shikumi declarations support the same behavior. For example:
+
+```python
+from shikake import parse_source
+from shikake.external import ExternalDefinitionsBuilder
+
+definitions = (
+    ExternalDefinitionsBuilder()
+    .add_feature("demo.checked", ("demo.operation",))
+    .add_kind("demo.operation", "model.value")
+    .add_call(
+        "sample.ops:checked", "demo.operation.call", ("value",),
+        parent_id="demo.operation", features=("demo.checked",),
+    )
+    .build()
+)
+root = parse_source(
+    "from sample.ops import checked\nx = checked(5)\n",
+    definitions=definitions,
+)
+assert [m.features for m in root.walk() if m.kind.id == "demo.operation.call"] == [("demo.checked",)]
+assert definitions.index.allows_feature("demo.operation.call", "demo.checked")
+```
+
+The equivalent trusted Shikumi declaration uses `feature_id @= "demo.checked"` and `feature_allowed @= "demo.operation"` in a Feature entity; on a Call, Type or Generic mapping entity it uses `apply_feature @= "demo.checked"`.

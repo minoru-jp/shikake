@@ -81,10 +81,14 @@ class SpecialStatementTests(unittest.TestCase):
         self.assertEqual(none_model.kind.id, "model.value.literal.special.none")
         self.assertIsNone(none_model.get("value"))
         self.assertTrue(
-            shikake.kind_index().is_a(none_model.kind.id, "model.value.literal")
+            shikake.definition_index().classified_under(
+                none_model.kind.id, "model.value.literal"
+            )
         )
         self.assertTrue(
-            shikake.kind_index().is_a(ellipsis_model.kind.id, "model.value.literal")
+            shikake.definition_index().classified_under(
+                ellipsis_model.kind.id, "model.value.literal"
+            )
         )
         (empty_return,) = children(child(f, "body"), "statements")
         (explicit_return,) = children(child(g, "body"), "statements")
@@ -97,7 +101,7 @@ class SpecialStatementTests(unittest.TestCase):
         self.assertEqual(indexed_access.kind.id, "model.value.access.index")
         self.assertIs(child(indexed_access, "index").get("value"), Ellipsis)
         with self.assertRaises(TypeError):
-            ModelFactory(shikake.kind_index()).make(
+            ModelFactory(shikake.definition_index()).make(
                 "model.value.literal", value=cast(PartValue, object())
             )
 
@@ -117,7 +121,7 @@ class SpecialStatementTests(unittest.TestCase):
             "|=": "bitwise_or",
             "^=": "bitwise_xor",
         }
-        index = shikake.kind_index()
+        index = shikake.definition_index()
         for token, slug in operators.items():
             with self.subTest(operator=token):
                 root = shikake.parse_source(f"target {token} value\n")
@@ -129,7 +133,7 @@ class SpecialStatementTests(unittest.TestCase):
                     tuple(part.role for part in statement.parts()), ("target", "value")
                 )
                 self.assertTrue(
-                    index.is_a(
+                    index.classified_under(
                         statement.kind.id, "model.statement.assignment.augmented"
                     )
                 )
@@ -158,7 +162,7 @@ class SpecialStatementTests(unittest.TestCase):
             "model.statement.assignment.augmented.subtraction",
         ):
             self.assertIn(expected, ids)
-        kinds = shikake.kind_index().all_kinds()
+        kinds = shikake.definition_index().all_kinds()
         self.assertEqual(len(kinds), 142)
         self.assertEqual(len(kinds), len({kind.id for kind in kinds}))
         inspected = shikake.inspect_source(source)

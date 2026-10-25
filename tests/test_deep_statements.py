@@ -10,12 +10,14 @@ from typing import cast
 from test_type_alias_unsupported import simulate_unadopted_syntax
 
 from shikake import Model, inspect_source, parse_source
-from shikake._mica.kinds import kind_index
+from shikake._mica.kinds import definition_index
 from shikake._mica.parser import UnsupportedSyntaxError, _Builder
 
 
 def _module(statement: ast.stmt) -> Model:
-    return _Builder(kind_index()).module(ast.Module(body=[statement], type_ignores=[]))
+    return _Builder(definition_index()).module(
+        ast.Module(body=[statement], type_ignores=[])
+    )
 
 
 class IterativeStatementTests(unittest.TestCase):

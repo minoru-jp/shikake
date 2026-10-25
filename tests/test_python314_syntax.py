@@ -49,7 +49,7 @@ class Python314SyntaxTests(unittest.TestCase):
             patch.object(python314, "_TEMPLATE_STR", _TemplateStr),
             patch.object(python314, "_INTERPOLATION", _Interpolation),
         ):
-            return parser._Builder(shikake.kind_index()).expression(node)
+            return parser._Builder(shikake.definition_index()).expression(node)
 
     def test_template_ast_preserves_order_conversion_and_nested_format(self) -> None:
         spec = ast.JoinedStr(

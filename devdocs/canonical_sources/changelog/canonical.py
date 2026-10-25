@@ -17,8 +17,37 @@ class CHANGELOG:
     `devdocs/canonical_sources/development_history/comments.py`、
     `devdocs/canonical_sources/development_history/builtins.py` に記録します。
 
-    `0.0.1` は2026年10月23日付の初回Alphaリリース、`0.0.2` は2026年10月24日付のリリースとして記録します。`0.0.3` は2026年10月24日の旧版として記録します。`0.0.4` は2026年10月25日の公開版として記録し、実際のPyPI・GitHubアップロードは別途行います。
+    `0.0.5` は2026年10月25日の公開版として記録します。`0.0.1` は2026年10月23日付の初回Alphaリリース、`0.0.2` は2026年10月24日付のリリースとして記録します。`0.0.3` は2026年10月24日の旧版として記録します。`0.0.4` は2026年10月25日の公開版として記録し、実際のPyPI・GitHubアップロードは別途行います。
     変更項目は公開APIと利用者向け機能の範囲を示します。"""
+
+    class VERSION_0_0_5:
+        """shikake v0.0.5（2026年10月25日公開版）。ModelRefの追加と定義体系の整理、外部Featureの宣言と明示的付与に対応。Modelの構造的等価性は変更しない。"""
+
+        title @= "0.0.5（2026-10-25）"
+
+        class ADDED:
+            """- **ModelRef**：公開型 `ModelRef(model: Model, source_path: str | Path)` を追加。内部ではPathを保持し、Model個体（`is`）とPathの同値性の両方で比較・ハッシュ化する。利用側が必要な場合に明示的に生成し、辞書・集合のキーや外部解析ツールとのソース位置照合に利用できる。ファイルの実在確認やPathの解決は行わない。
+            - **定義クエリ**：DefinitionIndexの`classified_under`・`defines_role`・`allows_feature`からKind分類、Structure role定義、Feature適用可能性を独立に照会できる。
+            - **外部Feature**：ShikumiとExternalDefinitionsBuilderの両方でFeatureを宣言でき、Call・Type・Genericマッピングから専用Modelへ明示的に付与できる。
+            - **合成と出自**：base=ExternalDefinitionsで先行マッピングと外部Feature宣言の出自を引き継ぎ、組み込みFeatureの外部マッピング付与を禁止する。"""
+
+            title @= "追加"
+
+        class CHANGED:
+            """- **定義Index**：KindIndexをDefinitionIndexに、kind_index()をdefinition_index()に、is_a()をclassified_under()に改名。互換エイリアスは提供しない。定義クエリはModelへ移さず、外部定義を取り込んだIndexから行う。外部IDはドット付き修飾名を必須とし、model名前空間は予約する。Featureの順序はModelFactory生成時にID昇順へ正規化するが、直接構築したModelは順序を保持する。外部IDのセグメントにPython予約語とUnicode識別子を許容し、Unicode正規化を行わず元の文字列で識別する。拒否理由を分類して通知する。独自Indexの合成は拒否し、正規の合成経路を案内する。直接構築したExternalDefinitionsは出自検証の対象外であることを明記した。ModelRefは実行時にModel以外を拒否する。"""
+
+            title @= "変更（非互換APIの改名）"
+
+        class VERIFIED:
+            """- 更新済みv0.0.5は702件のテストを対象とし、Python 3.13.5で689件成功・13件スキップ・失敗0件をローカル確認した。Ruff check・formatとBasedPyrightも成功した。
+            - Python 3.11・3.12・3.13・3.14・free-threaded版3.14・3.15b4の全6環境でテストが正常終了（失敗0件）した結果として記録する。複数インタープリタでの実行ログはこの作業環境では独立に検証していない。"""
+
+            title @= "検証記録"
+
+        class UNCHANGED:
+            """- Modelの構造的等価性、既存のPython構文のModel化規則、関係分析・コメント検索の意味は変更しない。ModelRefはModelメンバーへの委譲や子Modelの自動ラップを行わない。ASTとtokenizeの公開も追加しない。互換用レイヤーは設けない。"""
+
+            title @= "維持する契約"
 
     class VERSION_0_0_4:
         """shikake v0.0.4（2026年10月25日公開版）。外部インターフェースを任意のModel化へ整理し、束縛4軸、ImportPolicy、Generator Feature、解析性能と構文スコープを更新した。後方互換性は提供しない。"""

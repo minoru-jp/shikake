@@ -154,7 +154,7 @@ class ControlFlowModelTests(unittest.TestCase):
         cls = one(alias, "pattern")
         self.assertEqual(cls.kind.id, "model.pattern.class")
         self.assertEqual(many(cls, "keywords")[0].get("name"), "name")
-        index = shikake.kind_index()
+        index = shikake.definition_index()
         for node in branch.walk():
             self.assertEqual(
                 tuple(p.role for p in node.parts()),
@@ -188,7 +188,7 @@ class ControlFlowModelTests(unittest.TestCase):
         self.assertEqual(root.kind.id, "model.module")
         self.assertTrue(
             all(
-                node.kind.id in {k.id for k in shikake.kind_index().all_kinds()}
+                node.kind.id in {k.id for k in shikake.definition_index().all_kinds()}
                 for node in root.walk()
             )
         )

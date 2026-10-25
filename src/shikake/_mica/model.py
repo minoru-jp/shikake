@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from types import EllipsisType
 from typing import TypeAlias, TypeVar, cast, overload
 
-from .kinds import Kind, KindIndex
+from .kinds import DefinitionIndex, Kind
 
 Scalar: TypeAlias = str | int | float | complex | bool | bytes | None | EllipsisType
 PartValue: TypeAlias = "Model | tuple[Model, ...] | tuple[str, ...] | Scalar"
@@ -381,7 +381,7 @@ class Model(_StructuralHashStorage):
 class ModelFactory:
     """Validate concrete Models using the Kind's referenced Structure."""
 
-    def __init__(self, kinds: KindIndex) -> None:
+    def __init__(self, kinds: DefinitionIndex) -> None:
         self.kinds = kinds
 
     def make(
@@ -434,5 +434,5 @@ class ModelFactory:
             kind,
             tuple(ModelPart(s.role, values[s.role]) for s in structure.parts),
             span,
-            features,
+            tuple(sorted(features)),
         )

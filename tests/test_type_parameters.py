@@ -26,14 +26,14 @@ def child(model: Model, role: str) -> Model:
 
 class TypeDeclarationContracts(unittest.TestCase):
     def test_kind_structure_feature_contracts(self) -> None:
-        index = shikake.kind_index()
+        index = shikake.definition_index()
         self.assertEqual(
             (len(index.all_kinds()), len(index.all_structures())), (142, 62)
         )
         self.assertEqual(len(index.all_features()), 3)
         self.assertIsNone(index.structure_of("model.definition.type_parameter"))
         self.assertTrue(
-            index.is_a(
+            index.classified_under(
                 "model.definition.type_parameter.type_variable_tuple",
                 "model.definition",
             )

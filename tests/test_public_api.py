@@ -56,7 +56,7 @@ class PublicApiTest(unittest.TestCase):
         root = shikake.parse_source("answer = 1 + 2")
         self.assertEqual(root.kind.id, "model.module")
         self.assertTrue(shikake.inspect_source("answer = 1 + 2").complete)
-        self.assertIs(shikake.kind_index(), _mica.kind_index())
+        self.assertIs(shikake.definition_index(), _mica.definition_index())
 
 
 if __name__ == "__main__":

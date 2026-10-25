@@ -7,7 +7,7 @@ import unittest
 
 from shikake import inspect_source, parse_source
 from shikake._mica.ast_facts import _target_names, collect_syntax_facts
-from shikake._mica.kinds import kind_index
+from shikake._mica.kinds import definition_index
 from shikake._mica.parser import _Builder
 from shikake._mica.relation_analysis import _analyze_package_facts
 
@@ -44,7 +44,7 @@ def _class(
 def _candidates_for(statements: list[ast.stmt]):
     tree = ast.Module(body=statements, type_ignores=[])
     syntax = collect_syntax_facts(tree)
-    builder = _Builder(kind_index())
+    builder = _Builder(definition_index())
     module = builder.module(tree, name="sample.mod")
     return _analyze_package_facts(
         {"sample.mod": (module, False)},

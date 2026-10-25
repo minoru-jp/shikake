@@ -62,7 +62,9 @@ class ContextComprehensionTests(unittest.TestCase):
         self.assertEqual(child(entries[2], "target").get("name"), "slot")
         self.assertEqual(len(nodes(child(context, "body"), "statements")), 2)
         self.assertTrue(
-            shikake.kind_index().is_a(context.kind.id, "model.statement.control")
+            shikake.definition_index().classified_under(
+                context.kind.id, "model.statement.control"
+            )
         )
 
     def test_each_comprehension_form_has_appropriate_result_roles(self) -> None:
@@ -86,7 +88,7 @@ class ContextComprehensionTests(unittest.TestCase):
                     (model,) = nodes(model, "inputs")
                 self.assertEqual(model.kind.id, f"model.value.comprehension.{suffix}")
                 self.assertTrue(
-                    shikake.kind_index().is_a(
+                    shikake.definition_index().classified_under(
                         model.kind.id, "model.value.comprehension"
                     )
                 )
@@ -223,7 +225,7 @@ class ContextComprehensionTests(unittest.TestCase):
         inspected = shikake.inspect_source(source)
         self.assertTrue(inspected.complete)
         self.assertEqual(inspected.model, strict)
-        self.assertEqual(len(shikake.kind_index().all_kinds()), 142)
+        self.assertEqual(len(shikake.definition_index().all_kinds()), 142)
         ids = {node.kind.id for node in strict.walk()}
         for suffix in ("list", "set", "dict", "generator"):
             self.assertIn("model.value.comprehension." + suffix, ids)

@@ -56,17 +56,18 @@ class EXTERNAL_API:
         detail @= "positionは0からの連続値。"
 
     class API_003:
-        "検証済みの外部KindIndexと呼び出し対応付けを保持する。"
+        "外部DefinitionIndex・マッピングとFeatureの宣言出自を保持する。"
 
         name @= "shikake.external.ExternalDefinitions"
         kind @= TYPE
-        related @= (EXTERNAL.SPEC_001,)
-        input @= "index: KindIndex"
+        related @= (EXTERNAL.SPEC_001, EXTERNAL.SPEC_018)
+        input @= "index: DefinitionIndex"
         input @= "mappings: tuple[CallMapping, ...]"
         input @= "type_mappings: tuple[TypeMapping, ...]"
         input @= "generic_mappings: tuple[GenericMapping, ...]"
+        input @= "external_feature_ids: frozenset[str]"
         output @= "ExternalDefinitions"
-        detail @= "解析器へdefinitions=で渡す。"
+        detail @= "解析器へdefinitions=で渡す。外部Featureの出自とマッピングはbase合成後にも保持する。Builder・Shikumiローダー経由だけが整合性を検証する。ExternalDefinitionsを直接構築した場合は、公開されたexternal_feature_idsを含め利用側が妥当性と出自を保証する。"
 
     class API_004:
         "信頼済みPython記述モジュールをShikumiで検証し外部定義を作成する。"
@@ -76,9 +77,9 @@ class EXTERNAL_API:
         related @= (EXTERNAL.SPEC_001,)
         input @= "source: ModuleType"
         input @= "*"
-        input @= "base: KindIndex | None = None"
+        input @= "base: DefinitionIndex | ExternalDefinitions | None = None"
         output @= "ExternalDefinitions"
-        detail @= "解析対象ソースは実行しない。"
+        detail @= "解析対象ソースは実行しない。合成にはbase=ExternalDefinitionsを推奨する。組み込みIndexのみのbaseは利用できるが、独自・拡張済みIndex単体は先行マッピングや外部Feature出自を復元できないため拒否する。合成はload_external_definitions(module, base=previous)（previousはExternalDefinitions）で行う。解析APIのindex引数にExternalDefinitionsを渡さない。"
 
         class EXAMPLE:
             """次の2ファイルは、外部インターフェースの呼び出しを専用Kindへモデル化する例です。
@@ -134,8 +135,8 @@ class EXTERNAL_API:
             コードとして読み込む必要があります。登録済み呼び出しだけが専用Modelになり、
             任意の呼び出しを動的に解決するものではありません。
 
-            **対応範囲：** 外部Shikumi宣言で追加できるのは現在KindとStructureです。
-            外部Feature宣言は未対応で、指定すると拒否されます。"""
+            **対応範囲：** 外部Shikumi宣言ではKind・Structure・Featureを追加できます。
+            外部マッピングから付与できるFeatureは外部宣言されたIDだけです。組み込みの `async`・`generator`・`lazy` は明示付与できません。"""
 
     class API_005:
         "外部Structureのrole・shapeを定義するPartContractの公開別名。"
@@ -237,6 +238,7 @@ class EXTERNAL_API:
         input @= "target: ImportedCall"
         input @= "kind_id: str"
         input @= "arguments: tuple[Argument, ...]"
+        input @= "features: tuple[str, ...] = ()"
         output @= "CallMapping"
         detail @= "ExternalDefinitions.mappingsに保持する不変の対応付け。"
 
@@ -246,17 +248,20 @@ class EXTERNAL_API:
         name @= "shikake.external.ExternalDefinitionsBuilder"
         kind @= TYPE
         related @= (EXTERNAL.SPEC_012,)
-        input @= "__init__(*, base: KindIndex | None = None)"
+        input @= (
+            "__init__(*, base: DefinitionIndex | ExternalDefinitions | None = None)"
+        )
         input @= (
             "add_kind(kind_id: str, parent_id: str, structure_id: str | None = None)"
         )
         input @= "add_structure(structure_id: str, parts: Sequence[Role])"
-        input @= "add_mapping(target: str | ImportedCall, kind_id: str, arguments: Sequence[str] | Sequence[Argument])"
-        input @= "add_call(target: str | ImportedCall, kind_id: str, arguments: Sequence[str] | Sequence[Argument], *, parent_id: str = 'model.value', structure_id: str | None = None)"
-        input @= "add_type(target: str | ImportedType, kind_id: str, *, parent_id: str = 'model.value')"
-        input @= "add_generic(target: str | ImportedGeneric, kind_id: str, roles: Sequence[str], *, parent_id: str = 'model.value')"
+        input @= "add_feature(feature_id: str, allowed_kind_ids: Sequence[str])"
+        input @= "add_mapping(target: str | ImportedCall, kind_id: str, arguments: Sequence[str] | Sequence[Argument], *, features: Sequence[str] = ())"
+        input @= "add_call(target: str | ImportedCall, kind_id: str, arguments: Sequence[str] | Sequence[Argument], *, parent_id: str = 'model.value', structure_id: str | None = None, features: Sequence[str] = ())"
+        input @= "add_type(target: str | ImportedType, kind_id: str, *, parent_id: str = 'model.value', features: Sequence[str] = ())"
+        input @= "add_generic(target: str | ImportedGeneric, kind_id: str, roles: Sequence[str], *, parent_id: str = 'model.value', features: Sequence[str] = ())"
         output @= "build() -> ExternalDefinitions"
-        detail @= "add_callはKindとCallMappingを併せて宣言し、structure_id省略時はnode roleだけの専用Structureを生成する。既存Kindにマッピングのみ追加するときはadd_mappingを使う。文字列の引数名はrole名とキーワード名の両方に使用し、異なる場合はArgumentを指定する。argumentsには名前とArgumentを混在させず、単一の文字列も渡せない。build時にShikumi読み込みと共通の検証を適用し、保護import規則を緩和せず、外部Featureの追加もサポートしない。解析対象ソースやimport先は実行しない。"
+        detail @= "base=ExternalDefinitionsにより既存マッピングと外部Feature出自を引き継げる。拡張済みIndexのみでは両者を引き継げず、登録時に拒否される。Kind・Structure・Featureの外部IDは、ドット区切りで各セグメントがstr.isidentifier()を満たす2個以上の名前に限る（Python予約語・Unicode識別子は許可、先頭のmodel名前空間は予約）。IDのUnicode正規化は行わず、元の文字列で比較する。外部宣言Featureだけをマッピングから明示付与でき、正規解析経路のModelFactoryで生成するModelのFeature順序はID昇順に正規化する。Model直接構築では正規化しない。add_callはKindとCallMappingを併せて宣言し、structure_id省略時はnode roleだけの専用Structureを生成する。既存Kindにマッピングのみ追加するときはadd_mappingを使う。文字列の引数名はrole名とキーワード名の両方に使用し、異なる場合はArgumentを指定する。argumentsには名前とArgumentを混在させず、単一の文字列も渡せない。add_featureにより許可対象KindとFeatureを宣言できる。各マッピングのfeaturesでModelへの付与を明示する。build時にShikumi読み込みと共通の検証を適用し、保護import規則を緩和しない。解析対象ソースやimport先は実行しない。"
 
         class EXAMPLE:
             """簡易な外部呼び出し定義の例です。Shikumiの記述クラスは不要です。
@@ -308,7 +313,8 @@ class EXTERNAL_API:
         input @= "target: ImportedType"
         input @= "kind_id: str"
         output @= "TypeMapping"
-        detail @= "出力KindのStructureは空のrolesで定義する。"
+        input @= "features: tuple[str, ...] = ()"
+        detail @= "出力KindのStructureは空のrolesで定義する。明示されたFeatureは専用Modelに付与する。"
 
     class API_019:
         "外部Generic適用と専用Kindとの対応情報。"
@@ -320,7 +326,8 @@ class EXTERNAL_API:
         input @= "kind_id: str"
         input @= "roles: tuple[str, ...]"
         output @= "GenericMapping"
-        detail @= "rolesは宣言順・固定個数のnode roles。構文上の型意味は解釈しない。"
+        input @= "features: tuple[str, ...] = ()"
+        detail @= "rolesは宣言順・固定個数のnode roles。明示されたFeatureは専用Modelに付与する。構文上の型意味は解釈しない。"
 
     class API_020:
         "Shikumi外部Type参照ターゲットを宣言する。"
@@ -351,3 +358,32 @@ class EXTERNAL_API:
         input @= "role: str"
         output @= "Shikumi field assignment"
         detail @= "宣言順にGeneric引数の位置に対応する。"
+
+    class API_023:
+        "外部FeatureのIDを宣言するフィールド代入子。"
+
+        name @= "shikake.external.feature_id"
+        kind @= VALUE
+        related @= (EXTERNAL.SPEC_016,)
+        input @= "feature_id: str"
+        output @= "Shikumi field assignment"
+
+    class API_024:
+        "外部Featureを適用できるKind分類を列挙するフィールド代入子。"
+
+        name @= "shikake.external.feature_allowed"
+        kind @= VALUE
+        related @= (EXTERNAL.SPEC_016,)
+        input @= "kind_id: str"
+        output @= "Shikumi field assignment"
+        detail @= "対象Kindとその子孫に適用できる。少なくとも1つの許可対象が必要。"
+
+    class API_025:
+        "外部Call・Type・Genericの専用Modelへ付与するFeatureを列挙する。"
+
+        name @= "shikake.external.apply_feature"
+        kind @= VALUE
+        related @= (EXTERNAL.SPEC_017,)
+        input @= "feature_id: str"
+        output @= "Shikumi field assignment"
+        detail @= "Model化が成立した場合だけ付与する。定義だけでは自動付与しない。"

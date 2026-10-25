@@ -219,7 +219,7 @@ class HISTORY:
         """- 利用側の対応判断を保ちつつ、Kindの単一親分類・共通構造契約・非同期の横断的特徴を分離できるか実験コピーで検証した。
         - Shikumiの規定体へ共通契約定義・参照、横断的特徴の定義・適用先、親子契約互換性の検証を追加した。Shikumi本体の変更は不要であった。
         - Function/Method/Generatorの共通契約を統一し、二項演算・特殊値・単項・論理Kindの契約継承を試した。
-        - `Realizer[KindIndex]` を使い、SemanticViewからJSON等を保存せず、メモリ上でKind Indexを実現できた。
+        - `Realizer[DefinitionIndex]` を使い、SemanticViewからJSON等を保存せず、メモリ上でKind Indexを実現できた。
         - 複合代入の再親付けは契約整合性に効果があるが、既存の`is_a()`とKind IDプレフィックスに互換性上の課題を残すため、最終案としては未決定とした。
         - `async` 特徴は宣言・適用範囲・ModelFactoryでの検証までの試作に限定し、非同期構文のパーサー実装・変換方式は未着手とした。
         - 実験コピーは127 Kind / 1特徴 / 97テストを確認した。開発過程の検証なのでCHANGELOGは変更しない。"""
@@ -493,7 +493,7 @@ class HISTORY:
 
     class EXTERNAL_DECLARATIONS_FIRST_PHASE:
         """- フレームワーク利用者向けのPythonインターフェースと、フレームワークがMicaへ渡すShikumi記述体を分離する設計を採用した。利用者のPythonコードにMicaの宣言属性やデコレーターを要求しない。
-        - `kangen.external` に信頼できるPython記述体向けのKind・Structure宣言と `ImportedCall` / `Argument` を用いる照合規則を追加した。Shikumiで内容を検証し、標準KindIndexと衝突なく結合する。元のPythonインターフェースや変換対象コードを実行・importせず、AST上のimport記述と呼び出しから静的に照合する。
+        - `kangen.external` に信頼できるPython記述体向けのKind・Structure宣言と `ImportedCall` / `Argument` を用いる照合規則を追加した。Shikumiで内容を検証し、標準DefinitionIndexと衝突なく結合する。元のPythonインターフェースや変換対象コードを実行・importせず、AST上のimport記述と呼び出しから静的に照合する。
         - `parse_source`・`inspect_source`・`parse_package`・`inspect_package` に `definitions` 引数を追加した。importの別名と位置／キーワード引数のrole割り当てを実装。衝突する定義や予約されたimport識別子の再束縛、不明確な引数は黙って受け入れずエラーにする。Partialでは専用の `external_definition` 診断を返す。
         - 初期対象は明示的な最上位importによる呼び出しと、必須の単一node roleのみ。未importの同名式、未定義の動的参照、MRO、外部ライブラリの実行時意味は推測しない。標準の140 Kind／59 Structure／1 Featureを変更せず、未公開なのでCHANGELOGは変更しない。"""
 
@@ -679,7 +679,7 @@ class HISTORY:
         title @= "2026-10-21: 規則中心の新仕様書へ再構築を開始"
 
     class SPECIFICATION_REBUILD_PHASE2:
-        """- 旧仕様21モジュールと新仕様7モジュールを契約単位で照合し、初回再構築で欠落していたModelの型付き取得失敗契約、構造比較、KindIndex照会、Partial診断のフィールド・位置・省略範囲、Generatorの分類境界、非同期内包節のFeature、分岐構造等を、独立した規則ノードとして追加した。
+        """- 旧仕様21モジュールと新仕様7モジュールを契約単位で照合し、初回再構築で欠落していたModelの型付き取得失敗契約、構造比較、DefinitionIndex照会、Partial診断のフィールド・位置・省略範囲、Generatorの分類境界、非同期内包節のFeature、分岐構造等を、独立した規則ノードとして追加した。
         - 混在していた抽象Kindの構築制限と記述体の検証、字句スコープの独立性と `global` / `nonlocal` の束縛先宣言は、責務別に規則を分離した。既存の規則IDは改番せず、参照を付与した。
         - 旧仕様に存在した使用例、内部実装手順、将来の未決定事項は現行の規範契約としては移行しない。全Kindのrole/shape一覧と識別子別の専用API Reference、および旧仕様との網羅的な移行照合は引き続き作業対象である。
         - 実装・公開API・独立したモデル化ポリシーは変更せず、日本語Canonical Sourceと仕様構造テストのみ更新する。Markdown、INDEX、英訳は生成しない。"""
@@ -688,7 +688,7 @@ class HISTORY:
 
     class SPECIFICATION_REBUILD_PHASE3:
         """- 新仕様の規則と信頼済みKind記述体を照合し、140 Kind・59 Structureのうち59の具体Structureについて、宣言順のrole/shapeと直接参照するKindの対応を独立した `SPEC_NNN` として新しい `layouts.py` に記録した。Structureを直接持たない15の抽象Kindも別規則に列挙した。既存97規則の識別子は維持する。
-        - トップレベルの `kangen` 公開シンボルと `kangen.external` の外部宣言用APIを、`API_NNN`・`name`・`kind`・`input`・`output`・`related` を持つ2つのAPI Reference正本に分離した。Modelの型付きアクセサ、KindIndexの構造照会、PackageModelの候補取得など主要な公開メンバーも独立したAPI subjectとした。
+        - トップレベルの `kangen` 公開シンボルと `kangen.external` の外部宣言用APIを、`API_NNN`・`name`・`kind`・`input`・`output`・`related` を持つ2つのAPI Reference正本に分離した。Modelの型付きアクセサ、DefinitionIndexの構造照会、PackageModelの候補取得など主要な公開メンバーも独立したAPI subjectとした。
         - 仕様表のrole/shape・Kind対応が実装により不意に変わった場合、および公開APIが文書から欠落した場合に検出できる構造テストを追加した。README正本にはAPI Referenceへの導線を追加した。
         - 今回は検証可能な公開面を優先して文書化した。Python ASTの構文対応を網羅する全ての個別Kind規則や旧仕様との意味的な移行監査が完了したという意味ではない。ライブラリ実装・独立ポリシーは変更せず、生成Markdown・INDEX・英訳は作成しない。"""
 
@@ -710,12 +710,12 @@ class HISTORY:
         title @= "2026-10-21: 新仕様の第5段階監査と重要契約の補完"
 
     class SPECIFICATION_REBUILD_PHASE5_INDEX_BOUNDARIES:
-        """- 旧仕様21モジュールとの意味的移行監査を継続し、旧KindIndex仕様とModel構造仕様にあった公開契約のうち、Index照会の失敗条件、Featureの重複・不適用、SourceSpanのバイト位置、検証済みIndexの再利用について規範上の記述不足を確認した。
+        """- 旧仕様21モジュールとの意味的移行監査を継続し、旧DefinitionIndex仕様とModel構造仕様にあった公開契約のうち、Index照会の失敗条件、Featureの重複・不適用、SourceSpanのバイト位置、検証済みIndexの再利用について規範上の記述不足を確認した。
         - `MODEL.SPEC_017` から `SPEC_020` へ独立した契約として追加し、API Referenceの参照を該当する新規規則へ変更した。既存194規則のidentityは維持し、導入済みの7+1仕様モジュール構成も変えない。
         - 規則の内容は実装の公開APIと既存のテストで裏付け、同じ振る舞いを別仕様に重複定義しない。旧文書の使用例や実装内部の説明、将来構想を規範へ移すことはしない。
         - モジュール直下の `global` による不適切な `unstable` 判定は引き続き未修正の実装不一致とする。実装・独立ポリシー・公開APIは変更せず、生成Markdown・INDEX・英訳も作成しない。"""
 
-        title @= "2026-10-21: 第5段階継続監査でKindIndexと位置情報の契約を補完"
+        title @= "2026-10-21: 第5段階継続監査でDefinitionIndexと位置情報の契約を補完"
 
     class SPECIFICATION_REBUILD_PHASE5_PARTIAL_BOUNDARIES:
         """- 旧仕様21モジュールとの追加照合で、Partialパッケージの `name_bindings` の失効条件と、モジュール単位での不完全な結果の保持について、規範契約に記述漏れがあることを確認した。
@@ -737,7 +737,7 @@ class HISTORY:
     class SPECIFICATION_REBUILD_PHASE6_EDITORIAL:
         """- 第6段階として200規則と57 API subjectの責務・参照を点検した。AST→Kind対応の詳細規則は対応表を担い、一般規則は値の保持・取得・拒否条件を担うよう、一部の重複した説明を整理した。既存の規則ID・公開API名・対応表の行は変更しない。
         - `Model` の基本取得と型付きアクセサの失敗条件、外部構造の呼び出し許可とMapping結果、不完全パッケージの関係情報と束縛情報の失効など、隣接規則の責務を切り分けた。
-        - API Reference 14 subjectについて、汎用的な規則だけでなく `NameBinding` の取得単位、KindIndexの失敗条件、Partialの完全性・失効条件、Modelのwalkなど、実際の公開操作に対応する規則への参照を精密化した。
+        - API Reference 14 subjectについて、汎用的な規則だけでなく `NameBinding` の取得単位、DefinitionIndexの失敗条件、Partialの完全性・失効条件、Modelのwalkなど、実際の公開操作に対応する規則への参照を精密化した。
         - 構造テストでAPIの重要な参照先とAST→Kind対応の `detail` を固定した。Shikumiの正本・参照検証と全テストを通し、生成Markdown・INDEX・英訳は作成しない。
         - 旧仕様の全文章の意味的同等性はこの構造監査によって自動的には証明できず、モジュール直下の `global` による誤った `unstable` 判定も未解決の実装不一致として維持する。今回、ライブラリ本体と独立ポリシーは変更しない。"""
 
@@ -900,7 +900,7 @@ class HISTORY:
 
     class EXTERNAL_DEFINITIONS_BUILDER_STAGE3:
         """- 制限付きPython方言の宣言コストに関するフィードバックを受け、Shikumi定義クラスを多数記述せず、信頼済みPythonデータからKind・Structure・CallMappingを生成する `ExternalDefinitionsBuilder` を公開する。
-        - Shikumi記述モジュールの検証結果を組み立てる共通処理を切り出し、ビルダーの `build()` にも同じKindIndex・CallMappingの意味検証を適用する。外部Feature・重複ターゲット・引数role/順序・非nodeの引数等の従来の拒否を維持し、解析対象や登録先のPythonモジュールを実行しない。
+        - Shikumi記述モジュールの検証結果を組み立てる共通処理を切り出し、ビルダーの `build()` にも同じDefinitionIndex・CallMappingの意味検証を適用する。外部Feature・重複ターゲット・引数role/順序・非nodeの引数等の従来の拒否を維持し、解析対象や登録先のPythonモジュールを実行しない。
         - `add_call()` はKindとMappingを1回で追加し、専用Structure自動生成または共有Structure指定を選べる。既存KindへのMappingだけを追加する場合は `add_mapping()` を提供する。dotlangに相当する11関数でも共有Structureと独立Kindを保持する。
         - `from dot import sin` のような直接関数importは今回実装しない。現行の `ImportedCall` はモジュール名の後にClass.method以上の属性連鎖を要求し、保護対象root・予約名・明示importの扱いがその前提に依存する。追加するなら仕様と安全境界を別途検討し、ビルダーの便宜APIには紛れ込ませない。
         - `EXTERNAL.SPEC_012` と外部API正本・英語公開版・索引・回帰テストを更新する。独立モデル化ポリシーと既存のKind/Structureの意味は変更しない。日本語正本文書を永続生成しない。"""

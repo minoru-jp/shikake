@@ -29,12 +29,12 @@ def one(model: Model, role: str) -> Model:
 
 class RemainingFormsTests(unittest.TestCase):
     def test_kind_and_structure_separation(self) -> None:
-        index = shikake.kind_index()
+        index = shikake.definition_index()
         self.assertEqual(len(index.all_kinds()), 142)
         self.assertEqual(len(index.all_structures()), 62)
         self.assertEqual(len(index.all_features()), 3)
         self.assertTrue(
-            index.is_a(
+            index.classified_under(
                 "model.statement.scope_declaration.global",
                 "model.statement.scope_declaration",
             )
@@ -54,7 +54,9 @@ class RemainingFormsTests(unittest.TestCase):
             [("names", "texts")],
         )
         self.assertFalse(
-            index.is_a("model.value.function_expression", "model.definition.function")
+            index.classified_under(
+                "model.value.function_expression", "model.definition.function"
+            )
         )
 
     def test_lambda_reuses_parameter_model_without_name_or_block(self) -> None:
@@ -163,7 +165,7 @@ class RemainingFormsTests(unittest.TestCase):
         self.assertEqual([p.role for p in decls[0].parts()], ["names"])
 
     def test_texts_shape_rejects_other_values(self) -> None:
-        factory = ModelFactory(shikake.kind_index())
+        factory = ModelFactory(shikake.definition_index())
         kind = "model.statement.scope_declaration.global"
         for invalid in (["a", "b"], ("a", 42), "a", (1,)):
             with self.subTest(value=invalid), self.assertRaises(TypeError):

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import shikake
 from shikake._mica.ast_facts import collect_syntax_facts
-from shikake._mica.kinds import kind_index
+from shikake._mica.kinds import definition_index
 from shikake._mica.model import Model
 from shikake._mica.parser import _Builder
 from shikake._mica.relation_facts import _collect_facts
@@ -213,7 +213,7 @@ class RelationFactIndexTests(unittest.TestCase):
 
     def test_selected_definition_kinds_can_be_extended(self) -> None:
         tree = ast.parse("def run():\n    class Inner: pass\n")
-        builder = _Builder(kind_index())
+        builder = _Builder(definition_index())
         module = builder.module(tree, name="sample.code")
         facts = _collect_facts(
             {"sample.code": (module, False)},

@@ -39,13 +39,15 @@ def definition(root: Model, name: str) -> Model:
 
 class GeneratorSubjectTests(unittest.TestCase):
     def test_generator_is_function_or_method_with_feature(self) -> None:
-        index = shikake.kind_index()
+        index = shikake.definition_index()
         self.assertEqual(len(index.all_kinds()), 142)
         self.assertNotIn(
             "model.definition.generator", {kind.id for kind in index.all_kinds()}
         )
         self.assertTrue(
-            index.is_a("model.definition.method", "model.definition.function")
+            index.classified_under(
+                "model.definition.method", "model.definition.function"
+            )
         )
         self.assertIs(
             index.require_structure("model.definition.method"),
@@ -107,7 +109,9 @@ class GeneratorSubjectTests(unittest.TestCase):
                 tuple(p.role for p in item.parts()),
                 tuple(
                     c.role
-                    for c in shikake.kind_index().require_structure(item.kind.id).parts
+                    for c in shikake.definition_index()
+                    .require_structure(item.kind.id)
+                    .parts
                 ),
             )
 

@@ -23,7 +23,7 @@ class SpecificationPhase5IndexContractsTests(unittest.TestCase):
             "SPEC_017": ("KeyError", "ValueError", "require_structure"),
             "SPEC_018": ("重複", "validate_features"),
             "SPEC_019": ("UTF-8", "SourceSpan"),
-            "SPEC_020": ("kind_index()", "Index"),
+            "SPEC_020": ("definition_index()", "Index"),
         }.items():
             with self.subTest(rule=identity):
                 node = rules[identity]
@@ -39,10 +39,10 @@ class SpecificationPhase5IndexContractsTests(unittest.TestCase):
                 }
                 self.assertTrue({"title", "level"} <= fields)
 
-    def test_kind_index_lookups_have_distinct_absence_semantics(self) -> None:
-        index = shikake.kind_index()
+    def test_definition_index_lookups_have_distinct_absence_semantics(self) -> None:
+        index = shikake.definition_index()
         self.assertIsNone(index.parent("model"))
-        self.assertTrue(index.is_a("model", "model"))
+        self.assertTrue(index.classified_under("model", "model"))
         self.assertIsNone(index.structure_of("model"))
         with self.assertRaises(ValueError):
             index.require_structure("model")
@@ -51,7 +51,7 @@ class SpecificationPhase5IndexContractsTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             index.get_structure("not.registered")
         with self.assertRaises(KeyError):
-            index.is_a("model", "not.registered")
+            index.classified_under("model", "not.registered")
         self.assertEqual(
             index.require_structure("model.value.named"),
             index.structure_of("model.value.named"),
@@ -60,7 +60,7 @@ class SpecificationPhase5IndexContractsTests(unittest.TestCase):
     def test_feature_validation_rejects_unknown_duplicate_and_inapplicable(
         self,
     ) -> None:
-        index = shikake.kind_index()
+        index = shikake.definition_index()
         index.validate_features("model.definition.function", ("async",))
         with self.assertRaises(ValueError):
             index.validate_features("model.definition.function", ("async", "async"))
@@ -78,8 +78,8 @@ class SpecificationPhase5IndexContractsTests(unittest.TestCase):
         self.assertIsNone(module.span)
 
     def test_validated_index_reuse_and_public_value_immutability(self) -> None:
-        first = shikake.kind_index()
-        self.assertIs(first, shikake.kind_index())
+        first = shikake.definition_index()
+        self.assertIs(first, shikake.definition_index())
         kind = first.get("model")
         with self.assertRaises(FrozenInstanceError):
             kind.id = "changed"  # type: ignore[misc]

@@ -90,7 +90,7 @@ class ExternalBuilderStage3Tests(unittest.TestCase):
         builder.add_kind("demo.sin", "demo.func", "demo.args")
         builder.add_mapping("demo:Fn.sin", "demo.sin", (Argument("argument", 0, "v"),))
         definitions = builder.build()
-        self.assertTrue(definitions.index.is_a("demo.sin", "demo.func"))
+        self.assertTrue(definitions.index.classified_under("demo.sin", "demo.func"))
         model = shikake.parse_source(
             "from demo import Fn\nx = Fn.sin(v=2)\n", definitions=definitions
         )
@@ -137,7 +137,7 @@ class ExternalBuilderStage3Tests(unittest.TestCase):
         self.assertEqual(len(definitions.mappings), 11)
         self.assertEqual(
             len(definitions.index.all_structures()),
-            len(shikake.kind_index().all_structures()) + 3,
+            len(shikake.definition_index().all_structures()) + 3,
         )
         statements = ["from dot import Fn"]
         for name, keywords in signatures.items():
@@ -159,7 +159,8 @@ class ExternalBuilderStage3Tests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate Kind ID"):
             (
                 ExternalDefinitionsBuilder()
-                .add_call("demo:Fn.sin", "model.value.named", ("x",))
+                .add_call("demo:Fn.sin", "demo.repeat", ("x",))
+                .add_call("demo:Fn.cos", "demo.repeat", ("x",))
                 .build()
             )
         with self.assertRaisesRegex(ValueError, "roles do not match"):

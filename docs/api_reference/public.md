@@ -104,7 +104,7 @@ See [EXPRESSIONS.SPEC_032](../../devdocs/canonical_sources/specification/express
 
 **Operation.** Parse one Python source string into a Model using Strict analysis.
 
-- **Inputs:** `source: str, *, filename: str = "<source>", index: KindIndex | None = None, definitions: ModuleType | ExternalDefinitions | None = None, syntax_validation: Literal["compile", "ast"] = "compile", import_policy: ImportPolicy | None = None`
+- **Inputs:** `source: str, *, filename: str = "<source>", index: DefinitionIndex | None = None, definitions: ModuleType | ExternalDefinitions | None = None, syntax_validation: Literal["compile", "ast"] = "compile", import_policy: ImportPolicy | None = None`
 - **Result:** `Model`
 - **Specifications:** [PARSING.SPEC_001](../../devdocs/canonical_sources/specification/parsing.py), [EXTERNAL.SPEC_013](../../devdocs/canonical_sources/specification/external.py)
 
@@ -114,7 +114,7 @@ Unsupported syntax or invalid external definitions raise an exception.
 
 **Operation.** Parse selected regular Python-syntax source files under a directory using Strict analysis.
 
-- **Inputs:** `directory: str | Path, *, index: KindIndex | None = None, analyses: Iterable[str] | None = None, definitions: ModuleType | ExternalDefinitions | None = None, include: Callable[[Path, bool], bool] | None = None, extensions: tuple[str, ...] = (".py",), syntax_validation: Literal["compile", "ast"] = "compile", import_policy: ImportPolicy | None = None`
+- **Inputs:** `directory: str | Path, *, index: DefinitionIndex | None = None, analyses: Iterable[str] | None = None, definitions: ModuleType | ExternalDefinitions | None = None, include: Callable[[Path, bool], bool] | None = None, extensions: tuple[str, ...] = (".py",), syntax_validation: Literal["compile", "ast"] = "compile", import_policy: ImportPolicy | None = None`
 - **Result:** `PackageModel`
 - **Specifications:** [PARSING.SPEC_002](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_015](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_016](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_024](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_025](../../devdocs/canonical_sources/specification/parsing.py), [EXTERNAL.SPEC_013](../../devdocs/canonical_sources/specification/external.py)
 
@@ -124,7 +124,7 @@ Unsupported syntax or invalid external definitions raise an exception.
 
 **Operation.** Inspect one source string with Partial analysis, returning a Model and diagnostics.
 
-- **Inputs:** `source: str, *, filename: str = "<source>", index: KindIndex | None = None, definitions: ModuleType | ExternalDefinitions | None = None, syntax_validation: Literal["compile", "ast"] = "compile", import_policy: ImportPolicy | None = None`
+- **Inputs:** `source: str, *, filename: str = "<source>", index: DefinitionIndex | None = None, definitions: ModuleType | ExternalDefinitions | None = None, syntax_validation: Literal["compile", "ast"] = "compile", import_policy: ImportPolicy | None = None`
 - **Result:** `SourceInspection`
 - **Specifications:** [PARSING.SPEC_006](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_013](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_022](../../devdocs/canonical_sources/specification/parsing.py), [EXTERNAL.SPEC_013](../../devdocs/canonical_sources/specification/external.py)
 
@@ -136,17 +136,17 @@ Unregistered external calls, interface value references, rebinding, and mismatch
 
 **Operation.** Inspect a package with Partial analysis and report incompleteness and diagnostics.
 
-- **Inputs:** `directory: str | Path, *, index: KindIndex | None = None, analyses: Iterable[str] | None = None, definitions: ModuleType | ExternalDefinitions | None = None, include: Callable[[Path, bool], bool] | None = None, extensions: tuple[str, ...] = (".py",), syntax_validation: Literal["compile", "ast"] = "compile", import_policy: ImportPolicy | None = None`
+- **Inputs:** `directory: str | Path, *, index: DefinitionIndex | None = None, analyses: Iterable[str] | None = None, definitions: ModuleType | ExternalDefinitions | None = None, include: Callable[[Path, bool], bool] | None = None, extensions: tuple[str, ...] = (".py",), syntax_validation: Literal["compile", "ast"] = "compile", import_policy: ImportPolicy | None = None`
 - **Result:** `PackageInspection`
 - **Specifications:** [PARSING.SPEC_006](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_016](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_017](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_018](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_022](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_024](../../devdocs/canonical_sources/specification/parsing.py), [PARSING.SPEC_025](../../devdocs/canonical_sources/specification/parsing.py), [EXTERNAL.SPEC_013](../../devdocs/canonical_sources/specification/external.py)
 
 `analyses` must be `None` or an iterable of analysis names. A bare string (including the empty string) raises `TypeError`; unknown names raise `ValueError`. See [relationship analysis selection](#relationship-analysis-selection-analyses) and [package input extensions and selection](#package-input-extensions-extensions-and-selection-include). Only files matching `extensions` and accepted by `include` are inspected; excluded files are not diagnostics. Do not treat relation results from an incomplete selected package as complete.
 
-## API_005: `shikake.kind_index`
+## API_005: `shikake.definition_index`
 
 **Operation.** Obtain the trusted index of built-in Kind, Structure, and Feature definitions.
 
-- **Result:** `KindIndex`
+- **Result:** `DefinitionIndex`
 - **Specifications:** [MODEL.SPEC_020](../../devdocs/canonical_sources/specification/model.py)
 
 Cached within the process.
@@ -158,7 +158,7 @@ Cached within the process.
 - **Result:** `Model`
 - **Specifications:** [MODEL.SPEC_001](../../devdocs/canonical_sources/specification/model.py), [MODEL.SPEC_015](../../devdocs/canonical_sources/specification/model.py), [MODEL.SPEC_021](../../devdocs/canonical_sources/specification/model.py), [MODEL.SPEC_022](../../devdocs/canonical_sources/specification/model.py)
 
-Read Models returned by parsing APIs through `kind`, `span`, `features`, `parts()`, and related accessors. Direct user construction is **unsupported**; the internal constructor parameters are not part of the public contract.
+Read Models returned by parsing APIs through `kind`, `span`, `features`, `parts()`, and related accessors. Direct user construction is **unsupported**; the internal constructor parameters are not part of the public contract. The standard parsing/ModelFactory path sorts Feature IDs before constructing a Model; directly constructed Models retain the supplied Feature tuple order, which affects structural equality and hashing.
 
 **Equality and hashing.** Models use structural equality based on Kind, ordered roles and values, Features, and SourceSpan. A SourceSpan does not include a filename or module identity. Consequently, distinct Models originating from different files may compare equal and collapse into one key in a dictionary or set. Use `is` to compare individual Model instances, or `id(model)` as a temporary identity key while retaining references to those objects. Each Model instance caches its structural hash after the first calculation. Later calls return the cached value without traversing the tree. The initial calculation remains iterative, reuses cached child hashes when available, and caches newly computed hashes on every visited descendant Model. Cache storage does not change the structural equality or hash algorithm.
 
@@ -204,15 +204,15 @@ Kind classification inheritance does **not** imply inheritance of roles or shape
 
 Each part declares a role and shape.
 
-## API_011: `shikake.KindIndex`
+## API_011: `shikake.DefinitionIndex`
 
 **Type.** A validated index offering queries over Kinds, Structures, and Features.
 
 - **Inputs:** `kinds: tuple[Kind, ...], structures: tuple[Structure, ...] = (), features: tuple[Feature, ...] = ()`
-- **Result:** `KindIndex`
+- **Result:** `DefinitionIndex`
 - **Specifications:** [MODEL.SPEC_016](../../devdocs/canonical_sources/specification/model.py), [MODEL.SPEC_017](../../devdocs/canonical_sources/specification/model.py)
 
-Do not conflate Kind ancestry with Structure roles.
+Use the Kind as the query subject, distinguishing classification ancestry, the exact Structure role definitions, and Feature applicability. No Structure roles are inherited through Kind ancestry.
 
 ## API_012: `shikake.PackageModel`
 
@@ -354,7 +354,7 @@ Partial analysis instead reports such failures as `InspectionIssue` values.
 - **Result:** `Iterator[Model]`
 - **Specifications:** [MODEL.SPEC_008](../../devdocs/canonical_sources/specification/model.py)
 
-## API_028: `shikake.KindIndex.get`
+## API_028: `shikake.DefinitionIndex.get`
 
 **Operation.** Get a Kind by ID; an unknown ID raises `KeyError`.
 
@@ -362,7 +362,7 @@ Partial analysis instead reports such failures as `InspectionIssue` values.
 - **Result:** `Kind`
 - **Specifications:** [MODEL.SPEC_017](../../devdocs/canonical_sources/specification/model.py)
 
-## API_029: `shikake.KindIndex.parent`
+## API_029: `shikake.DefinitionIndex.parent`
 
 **Operation.** Get a Kind's immediate classification parent.
 
@@ -370,15 +370,15 @@ Partial analysis instead reports such failures as `InspectionIssue` values.
 - **Result:** `Kind | None`
 - **Specifications:** [MODEL.SPEC_017](../../devdocs/canonical_sources/specification/model.py)
 
-## API_030: `shikake.KindIndex.is_a`
+## API_030: `shikake.DefinitionIndex.classified_under`
 
-**Operation.** Check classification ancestry, not Structure inheritance.
+**Operation.** Check classification ancestry (including the Kind itself), not Structure inheritance.
 
 - **Inputs:** `kind_id: str, ancestor_id: str`
 - **Result:** `bool`
 - **Specifications:** [MODEL.SPEC_003](../../devdocs/canonical_sources/specification/model.py)
 
-## API_031: `shikake.KindIndex.structure_of`
+## API_031: `shikake.DefinitionIndex.structure_of`
 
 **Operation.** Get the Structure directly referenced by a Kind; do not infer a parent Kind's Structure.
 
@@ -386,7 +386,7 @@ Partial analysis instead reports such failures as `InspectionIssue` values.
 - **Result:** `Structure | None`
 - **Specifications:** [MODEL.SPEC_016](../../devdocs/canonical_sources/specification/model.py), [MODEL.SPEC_017](../../devdocs/canonical_sources/specification/model.py)
 
-## API_032: `shikake.KindIndex.require_structure`
+## API_032: `shikake.DefinitionIndex.require_structure`
 
 **Operation.** Require a Structure; abstract Kinds without one raise `ValueError`.
 
@@ -394,7 +394,7 @@ Partial analysis instead reports such failures as `InspectionIssue` values.
 - **Result:** `Structure`
 - **Specifications:** [MODEL.SPEC_017](../../devdocs/canonical_sources/specification/model.py)
 
-## API_033: `shikake.KindIndex.get_structure`
+## API_033: `shikake.DefinitionIndex.get_structure`
 
 **Operation.** Get a Structure by ID.
 
@@ -402,28 +402,28 @@ Partial analysis instead reports such failures as `InspectionIssue` values.
 - **Result:** `Structure`
 - **Specifications:** [MODEL.SPEC_017](../../devdocs/canonical_sources/specification/model.py)
 
-## API_034: `shikake.KindIndex.all_kinds`
+## API_034: `shikake.DefinitionIndex.all_kinds`
 
 **Operation.** Return all registered Kinds.
 
 - **Result:** `tuple[Kind, ...]`
 - **Specifications:** [MODEL.SPEC_016](../../devdocs/canonical_sources/specification/model.py)
 
-## API_035: `shikake.KindIndex.all_structures`
+## API_035: `shikake.DefinitionIndex.all_structures`
 
 **Operation.** Return all registered Structures.
 
 - **Result:** `tuple[Structure, ...]`
 - **Specifications:** [MODEL.SPEC_016](../../devdocs/canonical_sources/specification/model.py)
 
-## API_036: `shikake.KindIndex.all_features`
+## API_036: `shikake.DefinitionIndex.all_features`
 
 **Operation.** Return all registered Features.
 
 - **Result:** `tuple[Feature, ...]`
 - **Specifications:** [MODEL.SPEC_016](../../devdocs/canonical_sources/specification/model.py)
 
-## API_037: `shikake.KindIndex.validate_features`
+## API_037: `shikake.DefinitionIndex.validate_features`
 
 **Operation.** Validate whether Features are applicable to a Kind.
 
@@ -497,7 +497,7 @@ Matches `OverrideCandidate.method` by Model identity, not structural equality. R
 - **Result:** `Feature`
 - **Specifications:** [MODEL.SPEC_006](../../devdocs/canonical_sources/specification/model.py), [MODEL.SPEC_018](../../devdocs/canonical_sources/specification/model.py)
 
-An immutable definition returned by `KindIndex.all_features()`. Built-in Features are `async` and `generator` on supported function/method Kinds, and `lazy` for explicit Python 3.15 import modifiers on `model.import.direct` / `model.import.from`. `lazy` is not attached to `model.import.alias` and does not represent runtime import timing.
+An immutable definition returned by `DefinitionIndex.all_features()`. External Features can also be declared; applicability does not mean a Model actually carries the Feature. Built-in `async` applies to async functions/methods, async-for/async-with statements and asynchronous comprehension clauses; `generator` applies to generator functions/methods, and `lazy` to explicit Python 3.15 import modifiers on `model.import.direct` / `model.import.from`. `lazy` is not attached to `model.import.alias` and does not represent runtime import timing.
 
 ## API_046: `shikake.PackageInspection.model`
 
@@ -730,4 +730,55 @@ inspected = shikake.inspect_source("value = tuple([1, 2])")
 assert inspected.complete and inspected.model is not None
 (binding,) = inspected.bindings_for(inspected.model, "tuple")
 assert binding.state == shikake.BindingState("builtin", False, False, False)
+```
+
+## API_067: `shikake.ModelRef`
+
+**Type.** `ModelRef(model: Model, source_path: str | Path) -> ModelRef` creates an explicit, frozen, slotted identity-and-source reference. It is a distinct type, **not** a Model proxy. Its public attributes are `model: Model` and `source_path: Path`; the latter converts either a string or a `Path` through `Path(source_path)`.
+
+Two references compare equal **only if** their `model` attributes refer to the *same object* (`is`) **and** their `source_path` values compare equal as `Path` objects. Hashing follows the same rule without calling the Model's structural hash. A structurally equal Model created by a second parse is a different referent, even when its path matches. Path equality is lexical and platform-dependent: it does not prove that two paths identify the same file. `resolve()`, file-existence checks, absolute-path conversion, and symlink resolution are not performed; the caller supplies a source path appropriate to the Model.
+
+The existing parsing, inspection, and relationship APIs still use raw `Model` objects. `ModelRef` does not delegate Model members, wrap children automatically, expose AST/tokens, or perform source lookups. For optional external-tool integration, the caller can use `ref.source_path` and `ref.model.span` as hints, provided the source versions match. A span may be absent or non-unique.
+
+```python
+from pathlib import Path
+from shikake import ModelRef, parse_source
+
+model = parse_source("value = 1", filename="src/sample.py")
+ref = ModelRef(model, "src/sample.py")
+results = {ref: "analyzed"}
+assert results[ModelRef(model, Path("src/sample.py"))] == "analyzed"
+assert ref.model is model
+assert ref.source_path == Path("src/sample.py")
+```
+
+- **Specifications:** [MODEL.SPEC_015](../../devdocs/canonical_sources/specification/model.py), [MODEL.SPEC_019](../../devdocs/canonical_sources/specification/model.py), [MODEL.SPEC_025](../../devdocs/canonical_sources/specification/model.py)
+
+## API_068: `shikake.DefinitionIndex.defines_role`
+
+**Operation.** Check whether a role is declared by the Structure directly referenced by a Kind.
+
+- **Inputs:** `kind_id: str, role: str`
+- **Result:** `bool`
+- **Specifications:** [MODEL.SPEC_004](../../devdocs/canonical_sources/specification/model.py), [MODEL.SPEC_016](../../devdocs/canonical_sources/specification/model.py), [MODEL.SPEC_017](../../devdocs/canonical_sources/specification/model.py)
+
+A declared role returns `True` even if its Model value would be empty. Abstract Kinds return `False`. No roles are inherited from ancestor Kinds; an unknown Kind ID raises `KeyError`.
+
+## API_069: `shikake.DefinitionIndex.allows_feature`
+
+**Operation.** Check Feature applicability using the declared allowed Kind classifications.
+
+- **Inputs:** `kind_id: str, feature_id: str`
+- **Result:** `bool`
+- **Specifications:** [MODEL.SPEC_006](../../devdocs/canonical_sources/specification/model.py), [MODEL.SPEC_017](../../devdocs/canonical_sources/specification/model.py), [MODEL.SPEC_018](../../devdocs/canonical_sources/specification/model.py)
+
+Returns `True` for an allowed Kind or its descendants. Does not inspect the Features actually attached to any Model. Unknown Kind or Feature IDs raise `KeyError`.
+
+```python
+import shikake
+
+index = shikake.definition_index()
+assert index.classified_under("model.definition.method", "model.definition.function")
+assert index.defines_role("model.definition.method", "body")
+assert index.allows_feature("model.definition.method", "async")
 ```

@@ -98,7 +98,7 @@ class PUBLIC_API:
         input @= "source: str"
         input @= "*"
         input @= 'filename: str = "<source>"'
-        input @= "index: KindIndex | None = None"
+        input @= "index: DefinitionIndex | None = None"
         input @= "definitions: ModuleType | ExternalDefinitions | None = None"
         input @= 'syntax_validation: Literal["compile", "ast"] = "compile"'
         input @= "import_policy: ImportPolicy | None = None"
@@ -124,7 +124,7 @@ class PUBLIC_API:
         )
         input @= "directory: str | Path"
         input @= "*"
-        input @= "index: KindIndex | None = None"
+        input @= "index: DefinitionIndex | None = None"
         input @= "analyses: Iterable[str] | None = None"
         input @= "definitions: ModuleType | ExternalDefinitions | None = None"
         input @= "include: Callable[[Path, bool], bool] | None = None"
@@ -152,7 +152,7 @@ class PUBLIC_API:
         input @= "source: str"
         input @= "*"
         input @= 'filename: str = "<source>"'
-        input @= "index: KindIndex | None = None"
+        input @= "index: DefinitionIndex | None = None"
         input @= "definitions: ModuleType | ExternalDefinitions | None = None"
         input @= 'syntax_validation: Literal["compile", "ast"] = "compile"'
         input @= "import_policy: ImportPolicy | None = None"
@@ -180,7 +180,7 @@ class PUBLIC_API:
         )
         input @= "directory: str | Path"
         input @= "*"
-        input @= "index: KindIndex | None = None"
+        input @= "index: DefinitionIndex | None = None"
         input @= "analyses: Iterable[str] | None = None"
         input @= "definitions: ModuleType | ExternalDefinitions | None = None"
         input @= "include: Callable[[Path, bool], bool] | None = None"
@@ -195,10 +195,10 @@ class PUBLIC_API:
     class API_005:
         "信頼済みのKind・Structure・Feature定義を表すIndexを得る。"
 
-        name @= "shikake.kind_index"
+        name @= "shikake.definition_index"
         kind @= OPERATION
         related @= (MODEL.SPEC_020,)
-        output @= "KindIndex"
+        output @= "DefinitionIndex"
         detail @= "同一プロセスでキャッシュされる。"
 
     class API_006:
@@ -208,7 +208,7 @@ class PUBLIC_API:
         kind @= TYPE
         related @= (MODEL.SPEC_001, MODEL.SPEC_015, MODEL.SPEC_021, MODEL.SPEC_022)
         output @= "Model"
-        detail @= "解析APIの結果を読むための公開型。kind・span・featuresとparts()等を取得できる。利用者による直接構築はサポートせず、コンストラクタの内部引数は公開契約に含めない。Modelの等価性・ハッシュはKind・順序付き構成要素・Feature・SourceSpanに基づく構造的なもので、ファイル同一性を含まない。別ファイルの同形Modelも辞書や集合では同じキーになり得るため、個々のインスタンスの識別にはisまたは生存期間中のid()を使う。ハッシュはModelインスタンスごとに初回計算してキャッシュする。再度の呼び出しではキャッシュ値を返し、初回計算中は既にキャッシュ済みの子Modelの値を再利用し、未計算の子孫Modelにも計算結果をキャッシュする。reprは浅い・長さ制限付きの診断表示であり、構成木の完全表示ではない。"
+        detail @= "解析APIの結果を読むための公開型。kind・span・featuresとparts()等を取得できる。利用者による直接構築はサポートせず、コンストラクタの内部引数は公開契約に含めない。正規解析経路のModelFactoryはFeatureの順序をID昇順に正規化するが、直接構築したModelのFeatureは正規化されず、タプル順序が比較とハッシュに影響する。Modelの等価性・ハッシュはKind・順序付き構成要素・Feature・SourceSpanに基づく構造的なもので、ファイル同一性を含まない。別ファイルの同形Modelも辞書や集合では同じキーになり得る。個々のインスタンスとソースパスを組とする辞書キーが必要なら、利用側がModelRefを生成できる。ハッシュはModelインスタンスごとに初回計算してキャッシュする。再度の呼び出しではキャッシュ値を返し、初回計算中は既にキャッシュ済みの子Modelの値を再利用し、未計算の子孫Modelにも計算結果をキャッシュする。reprは浅い・長さ制限付きの診断表示であり、構成木の完全表示ではない。"
 
     class API_007:
         "構成要素のroleと値を組にした不変データ型。"
@@ -260,14 +260,14 @@ class PUBLIC_API:
     class API_011:
         "Kind分類、Structure、Featureの検証済み一覧と照会を提供する。"
 
-        name @= "shikake.KindIndex"
+        name @= "shikake.DefinitionIndex"
         kind @= TYPE
         related @= (MODEL.SPEC_016, MODEL.SPEC_017)
         input @= "kinds: tuple[Kind, ...]"
         input @= "structures: tuple[Structure, ...] = ()"
         input @= "features: tuple[Feature, ...] = ()"
-        output @= "KindIndex"
-        detail @= "Kindの分類祖先と構成roleを混同しない。"
+        output @= "DefinitionIndex"
+        detail @= "Kindを軸に分類、直接参照するStructure、Feature適用可能性を照会する。分類祖先と構造のrole継承を混同しない。"
 
     class API_012:
         "パッケージの構成木と、選択した静的関係情報を提供する。"
@@ -465,7 +465,7 @@ class PUBLIC_API:
     class API_028:
         "指定IDのKind。存在しないIDはKeyError。"
 
-        name @= "shikake.KindIndex.get"
+        name @= "shikake.DefinitionIndex.get"
         kind @= OPERATION
         related @= (MODEL.SPEC_017,)
         input @= "kind_id: str"
@@ -474,16 +474,16 @@ class PUBLIC_API:
     class API_029:
         "分類木の直接親。"
 
-        name @= "shikake.KindIndex.parent"
+        name @= "shikake.DefinitionIndex.parent"
         kind @= OPERATION
         related @= (MODEL.SPEC_017,)
         input @= "kind_id: str"
         output @= "Kind | None"
 
     class API_030:
-        "分類上の祖先関係。Structure継承ではない。"
+        "分類上の祖先関係（自身を含む）。Structure継承ではない。"
 
-        name @= "shikake.KindIndex.is_a"
+        name @= "shikake.DefinitionIndex.classified_under"
         kind @= OPERATION
         related @= (MODEL.SPEC_003,)
         input @= "kind_id: str, ancestor_id: str"
@@ -492,7 +492,7 @@ class PUBLIC_API:
     class API_031:
         "Kindが直接参照するStructure。親KindのStructureを推測しない。"
 
-        name @= "shikake.KindIndex.structure_of"
+        name @= "shikake.DefinitionIndex.structure_of"
         kind @= OPERATION
         related @= (MODEL.SPEC_016, MODEL.SPEC_017)
         input @= "kind_id: str"
@@ -501,7 +501,7 @@ class PUBLIC_API:
     class API_032:
         "Structureのない抽象KindはValueError。"
 
-        name @= "shikake.KindIndex.require_structure"
+        name @= "shikake.DefinitionIndex.require_structure"
         kind @= OPERATION
         related @= (MODEL.SPEC_017,)
         input @= "kind_id: str"
@@ -510,7 +510,7 @@ class PUBLIC_API:
     class API_033:
         "IDに対応するStructure。"
 
-        name @= "shikake.KindIndex.get_structure"
+        name @= "shikake.DefinitionIndex.get_structure"
         kind @= OPERATION
         related @= (MODEL.SPEC_017,)
         input @= "structure_id: str"
@@ -519,7 +519,7 @@ class PUBLIC_API:
     class API_034:
         "登録済みKind全体。"
 
-        name @= "shikake.KindIndex.all_kinds"
+        name @= "shikake.DefinitionIndex.all_kinds"
         kind @= OPERATION
         related @= (MODEL.SPEC_016,)
         output @= "tuple[Kind, ...]"
@@ -527,7 +527,7 @@ class PUBLIC_API:
     class API_035:
         "登録済みStructure全体。"
 
-        name @= "shikake.KindIndex.all_structures"
+        name @= "shikake.DefinitionIndex.all_structures"
         kind @= OPERATION
         related @= (MODEL.SPEC_016,)
         output @= "tuple[Structure, ...]"
@@ -535,7 +535,7 @@ class PUBLIC_API:
     class API_036:
         "登録済みFeature全体。"
 
-        name @= "shikake.KindIndex.all_features"
+        name @= "shikake.DefinitionIndex.all_features"
         kind @= OPERATION
         related @= (MODEL.SPEC_016,)
         output @= "tuple[Feature, ...]"
@@ -543,7 +543,7 @@ class PUBLIC_API:
     class API_037:
         "指定Kindに付与したFeatureの妥当性を検証する。"
 
-        name @= "shikake.KindIndex.validate_features"
+        name @= "shikake.DefinitionIndex.validate_features"
         kind @= OPERATION
         related @= (MODEL.SPEC_018,)
         input @= "kind_id: str, features: tuple[str, ...]"
@@ -620,7 +620,7 @@ class PUBLIC_API:
         input @= "id: str"
         input @= "allowed_kind_ids: tuple[str, ...]"
         output @= "Feature"
-        detail @= "KindIndex.all_features() から得られる不変の定義。標準Featureは関数・メソッド用の `async`・`generator` と、Python 3.15の明示的lazy importを表す `lazy`。`lazy` はimport文の `model.import.direct` / `model.import.from` にだけ付与し、aliasには付与しない。実行時の遅延を判定するものではない。"
+        detail @= "DefinitionIndex.all_features() から得られる不変の定義。外部Featureも宣言でき、Feature自体の定義とModelへの実際の付与は独立する。標準Featureの `async` は非同期関数・メソッドに加え、async for・async with・非同期内包節にも付く。`generator` はジェネレータ関数・メソッド用で、`lazy` はPython 3.15の明示的lazy importを表す。`lazy` はimport文の `model.import.direct` / `model.import.from` にだけ付与し、aliasには付与しない。実行時の遅延を判定するものではない。"
 
     class API_046:
         "Partialパッケージの構成木。"
@@ -912,3 +912,55 @@ if function.span is not None:
         kind @= TYPE
         related @= (PARSING.SPEC_033,)
         detail @= "AST上の行・列と違反内容を保持する。Python構文や実行時モジュールの安全性検査ではない。"
+
+    class API_067:
+        "利用側が明示的に生成する、Model個体とソースパスの不変の参照型。"
+
+        name @= "shikake.ModelRef"
+        kind @= TYPE
+        related @= (MODEL.SPEC_015, MODEL.SPEC_019, MODEL.SPEC_025)
+        input @= "model: Model"
+        input @= "source_path: str | Path"
+        output @= "ModelRef"
+        detail @= "`model` は元のModelへの参照、`source_path` はPathに変換されたソースパス。等価性は同じModel個体（is）かつPathの等価性、ハッシュも両者に基づく。Modelの構造的な等価性・ハッシュとは独立する。`Path(source_path)` 以外の正規化やファイル存在確認は行わず、ファイル同一性ではなくPathの同値性を使用する。Modelの属性委譲・子Modelの自動ラップはせず、既存の解析APIはModelを返すままである。"
+
+        # Keep runnable example code fences unindented in canonical rendering.
+        # fmt: off
+        class EXAMPLE:
+            r"""利用側が必要な場合にだけ辞書のキーを作成します。
+
+```python
+from pathlib import Path
+from shikake import ModelRef, parse_source
+
+model = parse_source("value = 1", filename="src/sample.py")
+ref = ModelRef(model, "src/sample.py")
+results = {ref: "analyzed"}
+assert results[ModelRef(model, Path("src/sample.py"))] == "analyzed"
+assert ref.model is model
+assert ref.source_path == Path("src/sample.py")
+```
+
+別ファイルのPathを指定した場合、または構造が等しくても別Model個体の場合には別のキーになります。`ref.model.span` は外部ツールとの位置照合のヒントにできますが、照合は利用側が担います。"""
+
+        # fmt: on
+
+    class API_068:
+        """Kindが直接参照するStructureにroleが宣言されているか判定する。"""
+
+        name @= "shikake.DefinitionIndex.defines_role"
+        kind @= OPERATION
+        related @= (MODEL.SPEC_004, MODEL.SPEC_016, MODEL.SPEC_017)
+        input @= "kind_id: str, role: str"
+        output @= "bool"
+        detail @= "roleに対応する値が空でもTrue。抽象KindではFalse。分類上の祖先KindのStructureを継承せず、未知Kind IDはKeyError。"
+
+    class API_069:
+        """KindへのFeature適用許可を、分類階層とFeature定義から判定する。"""
+
+        name @= "shikake.DefinitionIndex.allows_feature"
+        kind @= OPERATION
+        related @= (MODEL.SPEC_006, MODEL.SPEC_017, MODEL.SPEC_018)
+        input @= "kind_id: str, feature_id: str"
+        output @= "bool"
+        detail @= "許可対象Kindそのものとその子孫でTrue。Modelに実際にFeatureが付与されたかは判定しない。未知KindまたはFeature IDはKeyError。"

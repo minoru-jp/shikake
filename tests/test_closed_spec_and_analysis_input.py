@@ -62,7 +62,7 @@ class ClosedNormativeListsTests(unittest.TestCase):
         ):
             self.assertIn(f"`{suffix}`", pattern_rule)
             self.assertEqual(
-                shikake.kind_index().get(f"model.pattern.{suffix}").id,
+                shikake.definition_index().get(f"model.pattern.{suffix}").id,
                 f"model.pattern.{suffix}",
             )
 

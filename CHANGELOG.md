@@ -1,6 +1,28 @@
 # shikake changelog
 
-User-facing release history. The Japanese [canonical changelog source](devdocs/canonical_sources/changelog/canonical.py) is authoritative. Earlier design decisions and development history remain in [pre-release history](devdocs/canonical_sources/development_history/pre_release.py), [performance history](devdocs/canonical_sources/development_history/performance.py), [comment history](devdocs/canonical_sources/development_history/comments.py), and [built-in binding history](devdocs/canonical_sources/development_history/builtins.py). Version 0.0.4 is documented as a released version; artifact uploads are handled separately.
+User-facing release history. The Japanese [canonical changelog source](devdocs/canonical_sources/changelog/canonical.py) is authoritative. Earlier design decisions and development history remain in [pre-release history](devdocs/canonical_sources/development_history/pre_release.py), [performance history](devdocs/canonical_sources/development_history/performance.py), [comment history](devdocs/canonical_sources/development_history/comments.py), and [built-in binding history](devdocs/canonical_sources/development_history/builtins.py). Version 0.0.5 is documented as a released version.
+
+## 0.0.5 - 2026-10-25
+
+### Added
+
+- **`ModelRef`:** Public `ModelRef(model: Model, source_path: str | Path)` pairs an existing Model instance with a source path. Its frozen, slotted `source_path` is stored as a `Path`. Equality requires **both** the same Model object (`is`) and equal `Path` values. Hashing follows that combination without using Model's structural hash. It supports dictionary/set keys and consumer-owned source-position matching with `ref.model.span`. Neither file-system resolution nor existence checks are performed.
+
+- **Definition queries:** `DefinitionIndex.classified_under`, `defines_role`, and `allows_feature` separately inspect Kind ancestry, directly declared Structure roles, and Feature applicability. Querying definitions does not inspect individual Model values or Features.
+- **External Features:** Trusted Shikumi declarations or `ExternalDefinitionsBuilder.add_feature` register Features with allowed Kind classifications. Matching Call, Type, and Generic mappings can attach externally declared Features; invalid, duplicate, inapplicable, and built-in Feature assignments are rejected before parsing.
+- **Extension composition:** `base=ExternalDefinitions` keeps previous mappings and externally declared Feature provenance, so multiple libraries can share Feature declarations without losing earlier recognition. A bare `DefinitionIndex` cannot preserve mappings or provenance.
+
+### Changed (breaking API renames)
+
+- `KindIndex` → `DefinitionIndex`; `kind_index()` → `definition_index()`; `is_a()` → `classified_under()`. No aliases or compatibility adapters are provided. External Kind/Structure/Feature IDs require at least two dot-separated identifier segments, with Python keywords permitted and the `model.*` namespace reserved; errors distinguish the invalid rule. ModelFactory-generated Models sort Features by ID after duplicate validation, whereas directly constructed Models retain Feature tuple order. Direct `ExternalDefinitions(...)` construction bypasses builder/loader validation, including provenance validation. Custom or previously extended indexes cannot be used directly as `base`; errors point to the supported extension composition APIs. `ModelRef` rejects non-Model inputs at construction.
+
+### Verification
+
+- The updated v0.0.5 suite contains 702 tests. On Python 3.13.5, 689 passed and 13 were skipped, with no failures; Ruff check/format and BasedPyright passed. The suite is recorded as completing without failures on Python 3.11, 3.12, 3.13, 3.14, free-threaded 3.14, and 3.15b4. Cross-version execution logs were not independently inspected in this workspace.
+
+### Unchanged
+
+- Model's structural equality and hashing, the semantics of parsing/inspection/relationships, and comment extraction remain unchanged apart from the DefinitionIndex API renames and the external Feature addition. `ModelRef` is opt-in, does not proxy Model methods or wrap child Models, and does not expose AST or tokenize data. No compatibility adapter is added.
 
 ## 0.0.4 - 2026-10-25
 

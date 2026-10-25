@@ -42,7 +42,7 @@ class FunctionClassModelTests(unittest.TestCase):
 
     def test_sample_complete_and_contract_index_consistent(self) -> None:
         self.assertTrue(shikake.inspect_source(self.source).complete)
-        index = shikake.kind_index()
+        index = shikake.definition_index()
         kinds = index.all_kinds()
         self.assertEqual(len(kinds), 142)
         self.assertEqual(len({kind.id for kind in kinds}), len(kinds))
@@ -54,24 +54,28 @@ class FunctionClassModelTests(unittest.TestCase):
                 tuple(part.role for part in node.parts()),
                 tuple(
                     contract.role
-                    for contract in shikake.kind_index()
+                    for contract in shikake.definition_index()
                     .require_structure(node.kind.id)
                     .parts
                 ),
             )
         self.assertTrue(
-            index.is_a("model.definition.method", "model.definition.function")
+            index.classified_under(
+                "model.definition.method", "model.definition.function"
+            )
         )
         self.assertTrue(
-            index.is_a(
+            index.classified_under(
                 "model.structural_part.keyword_argument", "model.structural_part"
             )
         )
         self.assertFalse(
-            index.is_a("model.structural_part.keyword_argument", "model.value.call")
+            index.classified_under(
+                "model.structural_part.keyword_argument", "model.value.call"
+            )
         )
         self.assertFalse(
-            index.is_a(
+            index.classified_under(
                 "model.structural_part.dictionary_entry",
                 "model.value.collection.mapping",
             )

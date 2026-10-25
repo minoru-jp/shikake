@@ -6,7 +6,7 @@
 
 - **Building blocks:** **Kind** (classification), **Structure** (roles and shapes of parts), and **Feature** (independent syntactic characteristics).
 - **Foundation:** Python's standard-library `ast` and `tokenize` modules, plus the external **Shikumi** library.
-- **Extensibility:** Consumers can register external Call, Type, and Generic interfaces.
+- **Extensibility:** Consumers can register external Call, Type, and Generic interfaces and Features.
 
 ## Installation
 
@@ -280,10 +280,28 @@ These declarations specify **how to model** a form, not its runtime meaning or w
 ## Working with Models
 
 - **Model traversal:** explore `walk()`, Kinds, Structures, Features, and source positions.
+- **Definition queries:** use `shikake.definition_index()` or `definitions.index` to independently query classification (`classified_under`), declared Structure roles (`defines_role`), and Feature applicability (`allows_feature`). These query definitions, not a particular Model's contents.
+- **Opt-in source references:** `ModelRef(model, source_path)` pairs a Model instance with a `Path` for identity-based dictionary/set keys and consumer-owned cross-tool matching. It does not change Model equality.
 - **Structural relationships:** inspect candidate base-class references and same-name method overrides.
-- **External definitions:** register Call, Type, and Generic interfaces through the Python API or trusted Shikumi declarations.
+- **External definitions:** register Call, Type, and Generic interfaces and Features through the Python API or trusted Shikumi declarations. Only externally declared Features may be explicitly attached; built-in Features remain syntax-derived. Compose definitions with `ExternalDefinitionsBuilder(base=previous_definitions)` to preserve earlier mappings. External IDs require at least two dot-separated identifier segments (Python keywords are allowed); the `model.*` namespace is reserved.
 - **Analysis modes:** use `parse_source()` / `parse_package()` for complete results and `inspect_source()` / `inspect_package()` for results with diagnostics.
 - **Import checks:** consumers may delegate allow/deny checks through `ImportPolicy`. Star imports are represented, but their implicit name introductions and binding effects are not inferred.
+
+For example, a reference can identify an individual Model without changing the Model itself:
+
+```python
+from pathlib import Path
+from shikake import ModelRef, parse_source
+
+model = parse_source("value = 1", filename="src/example.py")
+ref = ModelRef(model, "src/example.py")
+cache = {ref: "processed"}
+assert cache[ModelRef(model, Path("src/example.py"))] == "processed"
+# The original structural Model remains directly accessible.
+assert ref.model is model
+```
+
+`ModelRef` compares its source paths with `Path` equality and its Models by object identity (`is`). It does not resolve paths or check for files; `ref.model.span` provides a source-position hint where available. The parsing APIs continue to return regular Models.
 
 For exact contracts and limitations, see the [API Reference](https://github.com/minoru-jp/shikake/blob/HEAD/docs/api_reference/INDEX.md) for exact contracts and limitations.
 

@@ -31,13 +31,15 @@ def node(model: Model, role: str) -> Model:
 
 class PackageModelTests(unittest.TestCase):
     def test_kind_contract_and_hierarchy(self) -> None:
-        index = shikake.kind_index()
+        index = shikake.definition_index()
         self.assertEqual(len(index.all_kinds()), 142)
         self.assertTrue(
-            index.is_a("model.definition.method", "model.definition.function")
+            index.classified_under(
+                "model.definition.method", "model.definition.function"
+            )
         )
-        self.assertTrue(index.is_a("model.value.call", "model.value"))
-        self.assertTrue(index.is_a("model.package", "model"))
+        self.assertTrue(index.classified_under("model.value.call", "model.value"))
+        self.assertTrue(index.classified_under("model.package", "model"))
         self.assertEqual(
             tuple(
                 c.role for c in index.require_structure("model.definition.class").parts
@@ -125,7 +127,7 @@ class PackageModelTests(unittest.TestCase):
                 [p.role for p in model.parts()],
                 [
                     role.role
-                    for role in shikake.kind_index()
+                    for role in shikake.definition_index()
                     .require_structure(model.kind.id)
                     .parts
                 ],

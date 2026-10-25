@@ -7,7 +7,7 @@ import unittest
 from typing import cast
 
 from shikake import Model, inspect_source, parse_source
-from shikake._mica.kinds import kind_index
+from shikake._mica.kinds import definition_index
 from shikake._mica.parser import _Builder
 
 
@@ -58,9 +58,9 @@ class DeepModelTests(unittest.TestCase):
     def test_three_thousand_term_addition_builder_and_model_operations(self) -> None:
         # The 3,000-term depth exercises shikake, not ast.parse, on every Python.
         tree = self._addition_module(3000)
-        model = _Builder(kind_index()).module(tree)
+        model = _Builder(definition_index()).module(tree)
         self.assertEqual(len(list(model.walk())), 6005)
-        again = _Builder(kind_index()).module(tree)
+        again = _Builder(definition_index()).module(tree)
         self.assertEqual(model, again)
         self.assertEqual(hash(model), hash(again))
 
@@ -107,7 +107,7 @@ class DeepModelTests(unittest.TestCase):
             body=[ast.Expr(value=ast.Yield(value=self._addition_expression(3000)))],
             decorator_list=[],
         )
-        model = _Builder(kind_index()).module(
+        model = _Builder(definition_index()).module(
             ast.Module(body=[function, generator], type_ignores=[])
         )
         functions = cast(tuple[Model, ...], model.get("body"))
@@ -136,13 +136,13 @@ class DeepModelTests(unittest.TestCase):
             ],
             type_ignores=[],
         )
-        model = _Builder(kind_index()).module(tree)
+        model = _Builder(definition_index()).module(tree)
         nodes = list(model.walk())
         self.assertEqual(len(nodes), 4504)
         self.assertEqual(nodes[0].kind.id, "model.module")
         self.assertEqual(nodes[3].kind.id, "model.value.access.index")
         self.assertEqual(nodes[-1].kind.id, "model.value.literal")
-        again = _Builder(kind_index()).module(tree)
+        again = _Builder(definition_index()).module(tree)
         self.assertEqual(model, again)
         self.assertEqual(hash(model), hash(again))
 
@@ -191,9 +191,9 @@ class DeepModelTests(unittest.TestCase):
             ],
             type_ignores=[],
         )
-        model = _Builder(kind_index()).module(tree)
+        model = _Builder(definition_index()).module(tree)
         self.assertEqual(len(list(model.walk())), 9007)
-        self.assertEqual(model, _Builder(kind_index()).module(tree))
+        self.assertEqual(model, _Builder(definition_index()).module(tree))
 
     def test_deep_call_and_lambda_chains(self) -> None:
         self.assertTrue(inspect_source("value = make()()()").complete)
@@ -208,7 +208,7 @@ class DeepModelTests(unittest.TestCase):
             ],
             type_ignores=[],
         )
-        calls = _Builder(kind_index()).module(tree)
+        calls = _Builder(definition_index()).module(tree)
         self.assertEqual(len(list(calls.walk())), 1805)
         self.assertTrue(inspect_source("value = " + "lambda: " * 15 + "3").complete)
         lambda_body: ast.expr = ast.Constant(value=3)
@@ -234,9 +234,9 @@ class DeepModelTests(unittest.TestCase):
             ],
             type_ignores=[],
         )
-        lambdas = _Builder(kind_index()).module(tree)
+        lambdas = _Builder(definition_index()).module(tree)
         self.assertEqual(len(list(lambdas.walk())), 1704)
-        self.assertEqual(lambdas, _Builder(kind_index()).module(tree))
+        self.assertEqual(lambdas, _Builder(definition_index()).module(tree))
 
     def test_deep_targets_without_recursion(self) -> None:
         # Construct AST directly: CPython imposes a separate nesting limit on
@@ -249,9 +249,9 @@ class DeepModelTests(unittest.TestCase):
                 target = ast.Tuple(elts=[target], ctx=ast.Store())
             else:
                 target = ast.List(elts=[target], ctx=ast.Store())
-        model = _Builder(kind_index()).target(target)
+        model = _Builder(definition_index()).target(target)
         self.assertEqual(len(list(model.walk())), 1501)
-        self.assertEqual(model, _Builder(kind_index()).target(target))
+        self.assertEqual(model, _Builder(definition_index()).target(target))
 
     def test_deep_patterns_and_mixed_patterns_without_recursion(self) -> None:
         pattern: ast.pattern = ast.MatchAs(name="item")
@@ -262,9 +262,9 @@ class DeepModelTests(unittest.TestCase):
                 pattern = ast.MatchAs(pattern=pattern, name="alias")
             else:
                 pattern = ast.MatchOr(patterns=[pattern])
-        model = _Builder(kind_index()).pattern(pattern)
+        model = _Builder(definition_index()).pattern(pattern)
         self.assertEqual(len(list(model.walk())), 1501)
-        self.assertEqual(model, _Builder(kind_index()).pattern(pattern))
+        self.assertEqual(model, _Builder(definition_index()).pattern(pattern))
         complex_pattern = ast.MatchClass(
             cls=ast.Name(id="Example", ctx=ast.Load()),
             patterns=[ast.MatchAs(name="positional")],
@@ -278,7 +278,7 @@ class DeepModelTests(unittest.TestCase):
         )
         kinds = [
             item.kind.id
-            for item in _Builder(kind_index()).pattern(complex_pattern).walk()
+            for item in _Builder(definition_index()).pattern(complex_pattern).walk()
         ]
         self.assertIn("model.pattern.class", kinds)
         self.assertIn("model.pattern.mapping", kinds)
@@ -308,8 +308,10 @@ class DeepModelTests(unittest.TestCase):
 
     def test_deep_equality_detects_differing_scalar_type(self) -> None:
         # The leaf value is numerically equal but its AST scalar type differs.
-        first = _Builder(kind_index()).module(self._addition_module(3000, last_value=1))
-        second = _Builder(kind_index()).module(
+        first = _Builder(definition_index()).module(
+            self._addition_module(3000, last_value=1)
+        )
+        second = _Builder(definition_index()).module(
             self._addition_module(3000, last_value=1.0)
         )
         self.assertNotEqual(first, second)
@@ -317,8 +319,10 @@ class DeepModelTests(unittest.TestCase):
 
     def test_deep_equality_detects_differing_leaf(self) -> None:
         # Source parsing is tested above; compare deep Builder results here.
-        first = _Builder(kind_index()).module(self._addition_module(2301, last_value=2))
-        second = _Builder(kind_index()).module(
+        first = _Builder(definition_index()).module(
+            self._addition_module(2301, last_value=2)
+        )
+        second = _Builder(definition_index()).module(
             self._addition_module(2301, last_value=3)
         )
         self.assertNotEqual(first, second)

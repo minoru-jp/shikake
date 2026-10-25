@@ -48,7 +48,7 @@ class OperationKindTests(unittest.TestCase):
             ("in", "in"),
             ("not in", "not_in"),
         )
-        index = shikake.kind_index()
+        index = shikake.definition_index()
         for symbol, name in cases:
             with self.subTest(operator=symbol):
                 model = value_expr(f"a {symbol} b")
@@ -58,7 +58,9 @@ class OperationKindTests(unittest.TestCase):
                 self.assertEqual(child(model, "left").get("name"), "a")
                 self.assertEqual(child(model, "right").get("name"), "b")
                 self.assertTrue(
-                    index.is_a(model.kind.id, "model.value.operation.comparison")
+                    index.classified_under(
+                        model.kind.id, "model.value.operation.comparison"
+                    )
                 )
                 self.assertEqual(
                     tuple(p.role for p in model.parts()), ("left", "right")
@@ -83,9 +85,13 @@ class OperationKindTests(unittest.TestCase):
         self.assertTrue(all(step.span is not None for step in steps))
         self.assertEqual(len(tuple(expression.walk())), 8)
         self.assertTrue(
-            shikake.kind_index().is_a(steps[0].kind.id, "model.structural_part")
+            shikake.definition_index().classified_under(
+                steps[0].kind.id, "model.structural_part"
+            )
         )
-        self.assertFalse(shikake.kind_index().is_a(steps[0].kind.id, "model.value"))
+        self.assertFalse(
+            shikake.definition_index().classified_under(steps[0].kind.id, "model.value")
+        )
 
     def test_boolean_operator_uses_ordered_values_not_binary_expansion(self) -> None:
         model = value_expr("a and b and c")
@@ -99,7 +105,9 @@ class OperationKindTests(unittest.TestCase):
         self.assertEqual(values[0].kind.id, "model.value.operation.logical.and")
         self.assertEqual(values[1].get("name"), "c")
         self.assertTrue(
-            shikake.kind_index().is_a(outer.kind.id, "model.value.operation.logical")
+            shikake.definition_index().classified_under(
+                outer.kind.id, "model.value.operation.logical"
+            )
         )
 
     def test_binary_operators_are_all_covered_without_conversion(self) -> None:
@@ -142,17 +150,17 @@ class OperationKindTests(unittest.TestCase):
                 self.assertEqual(model.kind.id, f"model.value.operation.{name}")
                 self.assertEqual(child(model, "operand").get("name"), "a")
                 self.assertTrue(
-                    shikake.kind_index().is_a(
+                    shikake.definition_index().classified_under(
                         model.kind.id, "model.value.operation.unary"
                     )
                 )
 
-    def test_kind_index_has_unique_ids_and_valid_contracts(self) -> None:
-        kinds = shikake.kind_index().all_kinds()
+    def test_definition_index_has_unique_ids_and_valid_contracts(self) -> None:
+        kinds = shikake.definition_index().all_kinds()
         self.assertEqual(len(kinds), 142)
         self.assertEqual(len({kind.id for kind in kinds}), len(kinds))
         for kind in kinds:
-            structure = shikake.kind_index().structure_of(kind.id)
+            structure = shikake.definition_index().structure_of(kind.id)
             if structure is None:
                 continue
             self.assertEqual(
@@ -186,7 +194,7 @@ class OperationKindTests(unittest.TestCase):
         nodes = tuple(root.walk())
         self.assertTrue(
             all(
-                node.kind.id in {k.id for k in shikake.kind_index().all_kinds()}
+                node.kind.id in {k.id for k in shikake.definition_index().all_kinds()}
                 for node in nodes
             )
         )

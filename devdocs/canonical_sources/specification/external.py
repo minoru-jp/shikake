@@ -96,7 +96,7 @@ class EXTERNAL:
         related @= (BINDING.SPEC_012, PARSING.SPEC_005)
 
     class SPEC_012:
-        """信頼済みのPythonデータから外部Kind・Structure・CallMappingを構築するビルダーは、Shikumi記述体の読み込み経路と同じKindIndex・Mappingの意味検証を適用しなければならない。直接関数を含むCallターゲット・引数の定義不整合は登録時に拒否する。解析対象のPythonコードや対象モジュールは実行またはimportしない。"""
+        """信頼済みのPythonデータから外部Kind・Structure・Feature・CallMappingを構築するビルダーは、Shikumi記述体の読み込み経路と同じDefinitionIndex・Mappingの意味検証を適用しなければならない。Featureは許可対象Kindを必ず宣言し、外部Call・Type・Genericの明示的なFeature付与は統合した定義に加えて外部宣言の出自によって検証しなければならない。組み込みFeatureの任意付与は禁止する。直接関数を含むCallターゲット・引数の定義不整合は登録時に拒否する。解析対象のPythonコードや対象モジュールは実行またはimportしない。"""
 
         title @= "外部定義の共通検証"
         level @= MUST
@@ -122,3 +122,24 @@ class EXTERNAL:
         title @= "Genericの構文使用と通常の値参照"
         level @= MUST
         related @= (BINDING.SPEC_018,)
+
+    class SPEC_016:
+        """信頼済みShikumi宣言とExternalDefinitionsBuilderは外部Featureの定義を受け付ける。外部Kind・Structure・FeatureのIDはドットで区切られた2個以上の非空セグメントからなる修飾名とし、各セグメントは `str.isidentifier()` を満たす。Pythonの予約語および `str.isidentifier()` を満たすUnicode文字もセグメントに使える。IDにNFKC等のUnicode正規化は行わず、元の文字列の一致で識別・重複を判定するため、見た目が近いIDも異なるものとして扱われ得る。先頭セグメント `model` の名前空間を組み込み用に予約する。Feature IDは統合済み定義内で重複せず、適用可能なKind分類を1つ以上指定しなければならない。宣言はModelへの自動付与を意味しない。BuilderとShikumiで同じ入力・意味検証を行う。"""
+
+        title @= "外部Featureの宣言"
+        level @= MUST
+        related @= (MODEL.SPEC_006, MODEL.SPEC_013)
+
+    class SPEC_017:
+        """外部Call・Type・GenericマッピングはFeature IDを明示的に列挙できる。統合済みDefinitionIndexを用いて未知ID・重複・対象Kindへの適用不可を登録時に拒否し、外部由来の宣言に含まれるFeatureだけを対応する専用Model生成時に付与する。Featureは集合的な特性として、正規解析経路のModelFactoryで生成するときにFeature IDの昇順へ正規化する（重複は正規化前に拒否する）。`Model(...)` を利用者が直接構築する場合、この正規化は行われず、渡されたFeatureタプルの順序がModelの構造的等価性とハッシュに影響する。直接構築の整合性は保証しない。照合が不成立なら通常のModelに戻し、Featureだけを付けない。"""
+
+        title @= "外部Featureの明示的付与"
+        level @= MUST
+        related @= (MODEL.SPEC_018,)
+
+    class SPEC_018:
+        """外部定義の段階的合成には、以前のExternalDefinitionsをbaseに指定する。元のKind・Structure・Featureだけでなく、Call・Type・Genericマッピングと外部Featureの宣言出自を保ち、重複ターゲットは合成後全体で検証する。DefinitionIndex単体は問い合わせ用の定義集合であり、マッピングや出自を保持しない。baseに組み込みのDefinitionIndexだけを渡すことはできるが、独自・拡張済みIndexだけを渡すとマッピングや出自を復元できないため、黙って破棄せずエラーにする。`ExternalDefinitions` の直接構築は低水準の操作であり、BuilderまたはShikumiローダーによる定義検証・Feature出自保証の対象外とする。公開フィールド `external_feature_ids` を含め、直接構築した値の整合性は利用者が保証する。信頼できない入力を安全にするための改ざん防止機構ではない。"""
+
+        title @= "外部定義の合成単位と出自"
+        level @= MUST
+        related @= (MODEL.SPEC_006,)

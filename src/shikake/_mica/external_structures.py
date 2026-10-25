@@ -196,6 +196,7 @@ class _ExternalStructures:
         result = create(
             mapping.kind_id,
             span=_span(node),
+            features=mapping.features,
             **dict(zip(mapping.roles, values, strict=True)),
         )
         built.pop(node.value)
@@ -245,6 +246,7 @@ class _ExternalStructures:
         result = create(
             mapping.kind_id,
             span=span if isinstance(span, SourceSpan) else None,
+            features=mapping.features,
             **{role: built[child] for role, child in selected_arguments.items()},
         )
         for child in selected_arguments.values():

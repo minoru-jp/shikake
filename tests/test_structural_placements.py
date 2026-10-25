@@ -57,7 +57,7 @@ class StructuralPlacementTests(unittest.TestCase):
         star_call = many(one(called, "value"), "arguments")[0]
         self.assertEqual(star_call.kind.id, "model.structural_part.starred_argument")
         self.assertFalse(
-            shikake.kind_index().is_a(
+            shikake.definition_index().classified_under(
                 "model.value.starred_expansion", "model.structural_part"
             )
         )
@@ -102,7 +102,9 @@ obj.other: str = None
             ["target", "annotation", "value", "simple"],
         )
         self.assertTrue(
-            shikake.kind_index().is_a(attribute.kind.id, "model.statement.assignment")
+            shikake.definition_index().classified_under(
+                attribute.kind.id, "model.statement.assignment"
+            )
         )
 
     def test_class_keywords_keep_alias_order_and_star_bases(self) -> None:
